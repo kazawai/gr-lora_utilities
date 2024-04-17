@@ -1,0 +1,19 @@
+id: first_lora_mysquare
+label: mysquare
+category: '[First_lora]'
+templates:
+  imports: 'from gnuradio import first_lora'
+  make: 'first_lora.mysquare()'
+inputs:
+- label: in
+  domain: stream
+  dtype: complex
+  vlen: 1
+  multiplicity: 1
+outputs:
+- label: out
+  domain: stream
+  dtype: complex
+  vlen: 1
+  multiplicity: 1
+file_format: 1

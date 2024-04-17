@@ -1,0 +1,32 @@
+[
+{
+  "directory": "/home/kazawai/dev/C++/LoRa/gr-first_lora/build/lib",
+  "command": "/usr/bin/c++ -DBOOST_THREAD_DYN_LINK -DBOOST_THREAD_NO_LIB -DFMT_SHARED -DGR_CTRLPORT -DGR_MPLIB_GMP -DGR_PERFORMANCE_COUNTERS -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -Dgnuradio_first_lora_EXPORTS -I/home/kazawai/dev/C++/LoRa/gr-first_lora/lib/../include  -fvisibility=hidden -Wsign-compare -Wall -Wno-uninitialized -O3 -DNDEBUG -std=c++17 -fPIC -o CMakeFiles/gnuradio-first_lora.dir/mysquare_impl.cc.o -c /home/kazawai/dev/C++/LoRa/gr-first_lora/lib/mysquare_impl.cc",
+  "file": "/home/kazawai/dev/C++/LoRa/gr-first_lora/lib/mysquare_impl.cc",
+  "output": "lib/CMakeFiles/gnuradio-first_lora.dir/mysquare_impl.cc.o"
+},
+{
+  "directory": "/home/kazawai/dev/C++/LoRa/gr-first_lora/build/lib",
+  "command": "/usr/bin/c++ -DBOOST_THREAD_DYN_LINK -DBOOST_THREAD_NO_LIB -DFMT_SHARED -DGR_CTRLPORT -DGR_MPLIB_GMP -DGR_PERFORMANCE_COUNTERS -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -Dgnuradio_first_lora_EXPORTS -I/home/kazawai/dev/C++/LoRa/gr-first_lora/lib/../include  -fvisibility=hidden -Wsign-compare -Wall -Wno-uninitialized -O3 -DNDEBUG -std=c++17 -fPIC -o CMakeFiles/gnuradio-first_lora.dir/lora_detector_impl.cc.o -c /home/kazawai/dev/C++/LoRa/gr-first_lora/lib/lora_detector_impl.cc",
+  "file": "/home/kazawai/dev/C++/LoRa/gr-first_lora/lib/lora_detector_impl.cc",
+  "output": "lib/CMakeFiles/gnuradio-first_lora.dir/lora_detector_impl.cc.o"
+},
+{
+  "directory": "/home/kazawai/dev/C++/LoRa/gr-first_lora/build/python/first_lora/bindings",
+  "command": "/usr/bin/c++ -DBOOST_DATE_TIME_DYN_LINK -DBOOST_DATE_TIME_NO_LIB -DBOOST_PROGRAM_OPTIONS_DYN_LINK -DBOOST_PROGRAM_OPTIONS_NO_LIB -DBOOST_REGEX_DYN_LINK -DBOOST_REGEX_NO_LIB -DBOOST_SYSTEM_DYN_LINK -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_DYN_LINK -DBOOST_THREAD_NO_LIB -DBOOST_UNIT_TEST_FRAMEWORK_DYN_LINK -DBOOST_UNIT_TEST_FRAMEWORK_NO_LIB -DFMT_SHARED -DGR_CTRLPORT -DGR_MPLIB_GMP -DGR_PERFORMANCE_COUNTERS -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -Dfirst_lora_python_EXPORTS -I/home/kazawai/dev/C++/LoRa/gr-first_lora/build/python/first_lora/bindings -I/home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/../../../lib -I/home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/../../../include -I/home/kazawai/dev/C++/LoRa/gr-first_lora/lib/../include -isystem /usr/include/python3.11 -isystem /usr/lib/python3.11/site-packages/numpy/core/include  -fvisibility=hidden -Wsign-compare -Wall -Wno-uninitialized -O3 -DNDEBUG -std=c++17 -fPIC -fvisibility=hidden -Wno-unused-variable -flto -fno-fat-lto-objects -o CMakeFiles/first_lora_python.dir/mysquare_python.cc.o -c /home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/mysquare_python.cc",
+  "file": "/home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/mysquare_python.cc",
+  "output": "python/first_lora/bindings/CMakeFiles/first_lora_python.dir/mysquare_python.cc.o"
+},
+{
+  "directory": "/home/kazawai/dev/C++/LoRa/gr-first_lora/build/python/first_lora/bindings",
+  "command": "/usr/bin/c++ -DBOOST_DATE_TIME_DYN_LINK -DBOOST_DATE_TIME_NO_LIB -DBOOST_PROGRAM_OPTIONS_DYN_LINK -DBOOST_PROGRAM_OPTIONS_NO_LIB -DBOOST_REGEX_DYN_LINK -DBOOST_REGEX_NO_LIB -DBOOST_SYSTEM_DYN_LINK -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_DYN_LINK -DBOOST_THREAD_NO_LIB -DBOOST_UNIT_TEST_FRAMEWORK_DYN_LINK -DBOOST_UNIT_TEST_FRAMEWORK_NO_LIB -DFMT_SHARED -DGR_CTRLPORT -DGR_MPLIB_GMP -DGR_PERFORMANCE_COUNTERS -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -Dfirst_lora_python_EXPORTS -I/home/kazawai/dev/C++/LoRa/gr-first_lora/build/python/first_lora/bindings -I/home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/../../../lib -I/home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/../../../include -I/home/kazawai/dev/C++/LoRa/gr-first_lora/lib/../include -isystem /usr/include/python3.11 -isystem /usr/lib/python3.11/site-packages/numpy/core/include  -fvisibility=hidden -Wsign-compare -Wall -Wno-uninitialized -O3 -DNDEBUG -std=c++17 -fPIC -fvisibility=hidden -Wno-unused-variable -flto -fno-fat-lto-objects -o CMakeFiles/first_lora_python.dir/lora_detector_python.cc.o -c /home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/lora_detector_python.cc",
+  "file": "/home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/lora_detector_python.cc",
+  "output": "python/first_lora/bindings/CMakeFiles/first_lora_python.dir/lora_detector_python.cc.o"
+},
+{
+  "directory": "/home/kazawai/dev/C++/LoRa/gr-first_lora/build/python/first_lora/bindings",
+  "command": "/usr/bin/c++ -DBOOST_DATE_TIME_DYN_LINK -DBOOST_DATE_TIME_NO_LIB -DBOOST_PROGRAM_OPTIONS_DYN_LINK -DBOOST_PROGRAM_OPTIONS_NO_LIB -DBOOST_REGEX_DYN_LINK -DBOOST_REGEX_NO_LIB -DBOOST_SYSTEM_DYN_LINK -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_DYN_LINK -DBOOST_THREAD_NO_LIB -DBOOST_UNIT_TEST_FRAMEWORK_DYN_LINK -DBOOST_UNIT_TEST_FRAMEWORK_NO_LIB -DFMT_SHARED -DGR_CTRLPORT -DGR_MPLIB_GMP -DGR_PERFORMANCE_COUNTERS -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -Dfirst_lora_python_EXPORTS -I/home/kazawai/dev/C++/LoRa/gr-first_lora/build/python/first_lora/bindings -I/home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/../../../lib -I/home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/../../../include -I/home/kazawai/dev/C++/LoRa/gr-first_lora/lib/../include -isystem /usr/include/python3.11 -isystem /usr/lib/python3.11/site-packages/numpy/core/include  -fvisibility=hidden -Wsign-compare -Wall -Wno-uninitialized -O3 -DNDEBUG -std=c++17 -fPIC -fvisibility=hidden -Wno-unused-variable -flto -fno-fat-lto-objects -o CMakeFiles/first_lora_python.dir/python_bindings.cc.o -c /home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/python_bindings.cc",
+  "file": "/home/kazawai/dev/C++/LoRa/gr-first_lora/python/first_lora/bindings/python_bindings.cc",
+  "output": "python/first_lora/bindings/CMakeFiles/first_lora_python.dir/python_bindings.cc.o"
+}
+]

@@ -1,0 +1,34 @@
+id: first_lora_lora_detector
+label: lora detector
+category: '[First_lora]'
+templates:
+  imports: 'from gnuradio import first_lora'
+  make: 'first_lora.lora_detector(${threshold}, ${sf}, ${bw}, ${sr})'
+parameters:
+- id: threshold
+  label: Threshold
+  default: ' 0.1'
+  dtype: float
+- id: sf
+  label: Sf
+  default: ' 7'
+  dtype: float
+- id: bw
+  label: Bw
+  default: ' 125000'
+  dtype: float
+- id: sr
+  label: Sr
+  default: ' 500000'
+  dtype: float
+inputs:
+- label: in
+  domain: stream
+  dtype: complex
+  multiplicity: 1
+outputs:
+- label: out
+  domain: stream
+  dtype: complex
+  multiplicity: 1
+file_format: 1
