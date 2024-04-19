@@ -24,7 +24,7 @@ if(NOT first_lora_sources)
 endif(NOT first_lora_sources)
 
 add_library(gnuradio-first_lora SHARED ${first_lora_sources})
-target_link_libraries(gnuradio-first_lora gnuradio::gnuradio-runtime liquid)
+target_link_libraries(gnuradio-first_lora gnuradio::gnuradio-runtime liquid volk)
 target_include_directories(
     gnuradio-first_lora
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>

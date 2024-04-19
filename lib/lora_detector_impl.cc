@@ -41,12 +41,14 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
 
   // Samples per symbol (2^sf)
   d_sps = 1 << d_sf;
+  std::cout << "Samples per symbol: " << d_sps << std::endl;
 
   d_bw = bw;
   d_fs = bw * 2;
   d_sr = sr;
   index = 0;
-  d_fft_size = 10 * d_sps;
+  d_fft_size = 10 * (2 * d_sps);
+  d_bin_size = 10 * d_sps;
   // FFT decimation result
   std::vector<gr_complex> d_mult_hf = std::vector<gr_complex>(d_sps);
   // FFT result
@@ -65,7 +67,7 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
  */
 lora_detector_impl::~lora_detector_impl() {
   /* <+destructor+> */
-  fft_destroy_plan(fft); // undefined symbol: fft_destroy_plan
+  fft_destroy_plan(fft);
 }
 
 void lora_detector_impl::forecast(int noutput_items,
@@ -79,31 +81,32 @@ int32_t lora_detector_impl::dechirp(const gr_complex *in, gr_complex *block) {
   return 0;
 }
 
-uint32_t lora_detector_impl::argmax_32f(const float *x, float *max) {
+uint32_t lora_detector_impl::argmax_32f(const float *x, float *max,
+                                        uint16_t n) {
   float mag = abs(x[0]);
   float m = mag;
   uint32_t index = 0;
 
-  for (int i = 1; i < (10 * d_sps); i++) {
+  for (int i = 0; i < n; i++) {
     mag = abs(x[i]);
     if (mag > m) {
       m = mag;
       index = i;
     }
   }
-  *max = m;
+
   return index;
 }
 
 uint32_t lora_detector_impl::get_fft_peak(const lv_32fc_t *fft_r, float *b1,
-                                          float *b2, gr_complex *buffer_c,
-                                          float *max) {
+                                          float *b2, float *max) {
+  // TODO : Peak always returns 0.. Fix this
   uint32_t peak = 0;
   max = 0;
   volk_32fc_magnitude_32f(b1, fft_r, d_fft_size);
-  volk_32f_x2_add_32f(b2, b1, &b1[d_fft_size - (10 * d_sps)],
-                      d_fft_size - (10 * d_sps));
-  peak = argmax_32f(b2, max);
+  volk_32f_x2_add_32f(b2, b1, &b1[d_fft_size - d_bin_size],
+                      d_fft_size - d_bin_size);
+  peak = argmax_32f(b2, max, d_bin_size);
   return peak;
 }
 
@@ -116,9 +119,8 @@ int lora_detector_impl::general_work(int noutput_items,
 
   // Since we only want to detect the preamble, we don't need to process the
   // downchirps
-  gr_complex *up_blocks = (gr_complex *)malloc(d_sps * sizeof(gr_complex));
-  // Wanted to use volk_malloc for alligned memory allocation but it doesn't
-  // work
+  gr_complex *up_blocks = (gr_complex *)volk_malloc(d_sps * sizeof(gr_complex),
+                                                    volk_get_alignment());
   if (up_blocks == NULL) {
     std::cerr << "Error: Failed to allocate memory for up_blocks\n";
     return -1;
@@ -132,6 +134,10 @@ int lora_detector_impl::general_work(int noutput_items,
 
   // Buffer for FFT
   lv_32fc_t *fft_r = (lv_32fc_t *)malloc(d_fft_size * sizeof(lv_32fc_t));
+  if (fft_r == NULL) {
+    std::cerr << "Error: Failed to allocate memory for fft_r\n";
+    return -1;
+  }
 
   // FFT
   fft_execute(fft);
@@ -139,17 +145,24 @@ int lora_detector_impl::general_work(int noutput_items,
   memcpy(fft_r, &d_mult_hf_fft[0], d_fft_size * sizeof(lv_32fc_t));
 
   // Get peak of FFT
-  float *b1 = (float *)malloc(d_fft_size * sizeof(float));
-  float *b2 = (float *)malloc(d_fft_size * sizeof(float));
-  float max;
-  uint32_t peak = get_fft_peak(fft_r, b1, b2, up_blocks, &max);
+  float *b1 =
+      (float *)volk_malloc(d_fft_size * sizeof(float), volk_get_alignment());
+  float *b2 =
+      (float *)volk_malloc(d_bin_size * sizeof(float), volk_get_alignment());
+  if (b1 == NULL || b2 == NULL) {
+    std::cerr << "Error: Failed to allocate memory for b1 or b2\n";
+    return -1;
+  }
+  float max = 0;
+  uint32_t peak = get_fft_peak(fft_r, b1, b2, &max);
   buffer.push_back(peak);
+  std::cout << "Peak of FFT: " << peak << std::endl;
 
   // Free memory
-  free(up_blocks);
+  volk_free(up_blocks);
   free(fft_r);
-  free(b1);
-  free(b2);
+  volk_free(b1);
+  volk_free(b2);
 
   // Check if peak is above threshold
   if (buffer.size() >= MIN_PREAMBLE_CHIRPS) {
@@ -160,6 +173,7 @@ int lora_detector_impl::general_work(int noutput_items,
       if (buffer[i] - buffer[i - 1] > MAX_DRIFT) {
         // Preamble is invalid
         buffer.clear();
+        detected = false;
         return 0;
       }
     }
@@ -167,12 +181,18 @@ int lora_detector_impl::general_work(int noutput_items,
     // Preamble is valid
     memcpy(out, in, noutput_items * sizeof(gr_complex));
     std::cout << "Preamble detected\n";
+    detected = true;
+  }
+
+  if (!detected) {
+    memset(out, 0, noutput_items * sizeof(gr_complex));
   }
 
   // Do <+signal processing+>
   // Tell runtime system how many input items we consumed on
   // each input stream.
   consume_each(noutput_items);
+  detected = false;
 
   // Tell runtime system how many output items we produced.
   return noutput_items;

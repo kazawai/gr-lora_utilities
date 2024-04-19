@@ -36,9 +36,11 @@ private:
   std::vector<gr_complex> d_ref_downchip; // Downchip reference signal
   int32_t index;                          // Index for buffer
   uint8_t detected_count = 0;             // Number of detected LoRa symbols
-  uint8_t d_fft_size;                     // FFT size
+  uint16_t d_fft_size;                    // FFT size
+  uint16_t d_bin_size;                    // Bin size (d_fft_size / 2)
   fftplan fft;                            // FFT plan
   std::vector<gr_complex> d_mult_hf_fft;  // FFT result
+  bool detected = false;                  // Detected LoRa signal
   /**
    * @brief Dechirp LoRa symbol
    * https://dl.acm.org/doi/10.1145/3546869#d1e1181
@@ -97,14 +99,15 @@ private:
    * @return Peak of FFT
    */
   uint32_t get_fft_peak(const lv_32fc_t *fft_r, float *b1, float *b2,
-                        gr_complex *buffer_c, float *max);
+                        float *max);
   /**
    * @brief Get maximum value of array
    * @param x Array
-   * @param n
+   * @param max Maximum value
+   * @param n Length of array
    * @return Maximum value
    */
-  uint32_t argmax_32f(const float *x, float *n);
+  uint32_t argmax_32f(const float *x, float *max, uint16_t n);
 
 public:
   lora_detector_impl(float threshold, uint8_t sf, uint32_t bw, uint32_t sr);
