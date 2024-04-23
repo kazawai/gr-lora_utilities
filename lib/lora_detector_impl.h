@@ -18,29 +18,30 @@
 #include <vector>
 
 #define MIN_PREAMBLE_CHIRPS 4
-#define MAX_DRIFT 0.1
+#define MAX_DRIFT 40
 
 namespace gr {
 namespace first_lora {
 
 class lora_detector_impl : public lora_detector {
-private:
-  float d_threshold;                      // Threshold for detecting LoRa signal
-  uint8_t d_sf;                           // Spreading factor
-  uint32_t d_bw;                          // Bandwidth
-  uint32_t d_fs;                          // Sampling rate
-  uint32_t d_sr;                          // Symbol rate
-  uint32_t d_sps;                         // Samples per symbol (2^sf)
-  std::vector<uint32_t> buffer;           // Buffer for LoRa symbol
-  std::vector<gr_complex> d_dechirped;    // Dechirped samples
-  std::vector<gr_complex> d_ref_downchip; // Downchip reference signal
-  int32_t index;                          // Index for buffer
-  uint8_t detected_count = 0;             // Number of detected LoRa symbols
-  uint16_t d_fft_size;                    // FFT size
-  uint16_t d_bin_size;                    // Bin size (d_fft_size / 2)
-  fftplan fft;                            // FFT plan
-  std::vector<gr_complex> d_mult_hf_fft;  // FFT result
-  bool detected = false;                  // Detected LoRa signal
+ private:
+  float d_threshold;                    // Threshold for detecting LoRa signal
+  uint8_t d_sf;                         // Spreading factor
+  uint32_t d_bw;                        // Bandwidth
+  uint32_t d_fs;                        // Sampling rate
+  uint32_t d_sr;                        // Symbol rate
+  uint32_t d_sps;                       // Samples per symbol (2^sf)
+  uint32_t d_sn;                        // Number of samples
+  std::vector<uint32_t> buffer;         // Buffer for LoRa symbol
+  std::vector<gr_complex> d_dechirped;  // Dechirped samples
+  std::vector<gr_complex> d_ref_downchip;  // Downchip reference signal
+  int32_t index;                           // Index for buffer
+  uint8_t detected_count = 0;              // Number of detected LoRa symbols
+  uint16_t d_fft_size;                     // FFT size
+  uint16_t d_bin_size;                     // Bin size (d_fft_size / 2)
+  fftplan fft;                             // FFT plan
+  std::vector<gr_complex> d_mult_hf_fft;   // FFT result
+  bool detected = false;                   // Detected LoRa signal
   /**
    * @brief Dechirp LoRa symbol
    * https://dl.acm.org/doi/10.1145/3546869#d1e1181
@@ -49,7 +50,7 @@ private:
    * @return Value of LoRa symbol (dechirped)
    */
   int32_t dechirp(const gr_complex *in,
-                  gr_complex *block); // Dechirp LoRa symbol
+                  gr_complex *block);  // Dechirp LoRa symbol
   /**
    * @brief Generate chirp signal
    * @param sf Spreading factor
@@ -91,15 +92,38 @@ private:
   }
 
   /**
-   * @brief Get peak of FFT
+   * @brief Get peak of FFT using ABS comparaison
    * @param fft_r FFT result
    * @param b1 Buffer 1 (real)
    * @param b2 Buffer 2 (imag)
    * @param buffer_c Buffer complex
    * @return Peak of FFT
    */
-  uint32_t get_fft_peak(const lv_32fc_t *fft_r, float *b1, float *b2,
-                        float *max);
+  uint32_t get_fft_peak_abs(const lv_32fc_t *fft_r, float *b1, float *b2,
+                            float *max);
+
+  /**
+   * @brief Get peak of FFT using its phase
+   * @param fft_r FFT result
+   * @param b1 Buffer 1 (real)
+   * @param b2 Buffer 2 (imag)
+   * @param buffer_c Buffer complex
+   * @return Peak of FFT
+   */
+  uint32_t get_fft_peak_phase(const lv_32fc_t *fft_r, float *b1, float *b2,
+                              gr_complex *buffer_c, float *max);
+
+  /**
+   * @brief Add FFT to phase offset
+   * @param fft_result FFT result
+   * @param buffer Buffer 1
+   * @param buffer_c Buffer complex
+   * @param max_val_p the maximum value of the new FFT
+   * @param phase_offset The phase offset
+   */
+  uint32_t fft_add(const lv_32fc_t *fft_result, float *buffer,
+                   gr_complex *buffer_c, float *max_val_p, float phase_offset);
+
   /**
    * @brief Get maximum value of array
    * @param x Array
@@ -109,7 +133,7 @@ private:
    */
   uint32_t argmax_32f(const float *x, float *max, uint16_t n);
 
-public:
+ public:
   lora_detector_impl(float threshold, uint8_t sf, uint32_t bw, uint32_t sr);
   ~lora_detector_impl();
 
@@ -121,7 +145,7 @@ public:
                    gr_vector_void_star &output_items);
 };
 
-} // namespace first_lora
-} // namespace gr
+}  // namespace first_lora
+}  // namespace gr
 
 #endif /* INCLUDED_FIRST_LORA_LORA_DETECTOR_IMPL_H */

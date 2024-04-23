@@ -1043,3 +1043,11 @@ dkms.conf
 *.uf2
 # Raspberry Pi Pico disassembler file
 *.dis
+
+# Conda
+.conda/
+
+# Clang format
+.clang-format
+.clang-format.*
+.cmake-format.*
