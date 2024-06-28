@@ -9,6 +9,7 @@
 
 #include <gnuradio/gr_complex.h>
 #include <gnuradio/io_signature.h>
+#include <gnuradio/types.h>
 #include <liquid/liquid.h>
 #include <volk/volk.h>
 #include <volk/volk_complex.h>
@@ -24,33 +25,37 @@ namespace first_lora {
 using input_type = gr_complex;
 using output_type = gr_complex;
 lora_detector::sptr lora_detector::make(float threshold, uint8_t sf,
-                                        uint32_t bw, uint32_t sr) {
-  return gnuradio::make_block_sptr<lora_detector_impl>(threshold, sf, bw, sr);
+                                        uint32_t bw, uint32_t sr, int method) {
+  return gnuradio::make_block_sptr<lora_detector_impl>(threshold, sf, bw, sr,
+                                                       method);
 }
 
 /*
  * The private constructor
  */
 lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
-                                       uint32_t sr)
+                                       uint32_t sr, int method)
     : gr::block("lora_detector",
                 gr::io_signature::make(1 /* min inputs */, 1 /* max inputs */,
                                        sizeof(input_type)),
                 gr::io_signature::make(1 /* min outputs */, 1 /*max outputs */,
-                                       sizeof(output_type))) {
-  d_threshold = threshold;
-  d_sf = sf;
+                                       sizeof(output_type))),
+      d_threshold(threshold),
+      d_sf(sf),
+      d_bw(bw),
+      d_sr(sr),
+      d_method(method) {
+  assert((d_sf > 5) && (d_sf < 13));
 
   // Number of symbols
   d_sps = 1 << d_sf;
   std::cout << "Symbols: " << d_sps << std::endl;
   d_sn = 2 * d_sps;
 
-  d_bw = bw;
-  d_fs = bw * 2;
+  d_fs = d_bw * 2;
   d_sr = sr;
   index = 0;
-  d_fft_size = 10 * (2 * d_sps);
+  d_fft_size = 10 * d_sn;
   d_bin_size = 10 * d_sps;
   // FFT input vector
   d_mult_hf_fft = std::vector<gr_complex>(d_fft_size);
@@ -91,6 +96,7 @@ uint32_t lora_detector_impl::argmax_32f(const float *x, float *max,
     }
   }
 
+  *max = m;
   return index;
 }
 
@@ -98,7 +104,7 @@ uint32_t lora_detector_impl::get_fft_peak_abs(const lv_32fc_t *fft_r, float *b1,
                                               float *b2, float *max) {
   // TODO : Peak always returns 0.. Fix this
   uint32_t peak = 0;
-  max = 0;
+  *max = 0;
   volk_32fc_magnitude_32f(b1, fft_r, d_fft_size);
   volk_32f_x2_add_32f(b2, b1, &b1[d_fft_size - d_bin_size],
                       d_fft_size - d_bin_size);
@@ -136,15 +142,26 @@ uint32_t lora_detector_impl::fft_add(const lv_32fc_t *fft_result, float *buffer,
   return argmax_32f(buffer, max_val_p, d_bin_size);
 }
 
-int lora_detector_impl::general_work(int noutput_items,
-                                     gr_vector_int &ninput_items,
-                                     gr_vector_const_void_star &input_items,
-                                     gr_vector_void_star &output_items) {
-  auto in = static_cast<const input_type *>(input_items[0]);
-  auto out = static_cast<output_type *>(output_items[0]);
+int lora_detector_impl::compare_peak(const gr_complex *in, gr_complex *out) {
+  float max_amplitude = 0.0;
+  for (int i = 0; i < d_sps; i++) {
+    // Compute the amplitude of the received sample
+    float amplitude = std::abs(in[i]);
 
-  uint32_t num_consumed = d_sn;
+    if (amplitude > max_amplitude) {
+      max_amplitude = amplitude;
+    }
+  }
 
+  if (max_amplitude < d_threshold) {
+    return 0;
+  } else {
+    return 1;
+  }
+}
+
+int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
+                                        uint32_t n) {
   // Since we only want to detect the preamble, we don't need to process the
   // downchirps
   gr_complex *up_blocks = (gr_complex *)volk_malloc(d_sn * sizeof(gr_complex),
@@ -182,8 +199,7 @@ int lora_detector_impl::general_work(int noutput_items,
       (float *)volk_malloc(d_fft_size * sizeof(float), volk_get_alignment());
   float *b2 =
       (float *)volk_malloc(d_bin_size * sizeof(float), volk_get_alignment());
-  gr_complex *buffer_c = (gr_complex *)volk_malloc(
-      d_bin_size * sizeof(gr_complex), volk_get_alignment());
+
   if (b1 == NULL || b2 == NULL) {
     std::cerr << "Error: Failed to allocate memory for b1 or b2\n";
     return -1;
@@ -208,7 +224,7 @@ int lora_detector_impl::general_work(int noutput_items,
     // Preamble detected
     // Check if preamble is valid (iterate over buffer)
     // to check for maximum distance (drift)
-    for (int i = 1; i < buffer.size(); i++) {
+    for (unsigned long i = 1; i < buffer.size(); i++) {
       if (buffer[i] - buffer[i - 1] > MAX_DRIFT) {
         // Preamble is invalid
         detected = false;
@@ -217,21 +233,45 @@ int lora_detector_impl::general_work(int noutput_items,
 
     if (detected) {
       // Preamble is valid
-      std::cout << "Preamble detected\n";
-      memcpy(out, in, noutput_items * sizeof(gr_complex));
-      num_consumed = noutput_items;
+      memcpy(out, in, n * sizeof(gr_complex));
       detected = true;
     }
   }
 
   if (!detected) {
-    memset(out, 0, noutput_items * sizeof(gr_complex));
+    memset(out, 0, n * sizeof(gr_complex));
   }
 
-  // Do <+signal processing+>
+  return 0;
+}
+
+int lora_detector_impl::general_work(int noutput_items,
+                                     gr_vector_int &ninput_items,
+                                     gr_vector_const_void_star &input_items,
+                                     gr_vector_void_star &output_items) {
+  auto in = static_cast<const input_type *>(input_items[0]);
+  auto out = static_cast<output_type *>(output_items[0]);
+
+  switch (d_method) {
+    case 1:
+      detect_preamble(in, out, noutput_items);
+      break;
+    case 0: {
+      int detected = compare_peak(in, out);
+      if (detected)
+        memcpy(out, in, noutput_items * sizeof(gr_complex));
+      else
+        memset(out, 0, noutput_items * sizeof(gr_complex));
+      break;
+    }
+    default:
+      std::cerr << "Error: Invalid method\n";
+      return -1;
+  }
+
   // Tell runtime system how many input items we consumed on
   // each input stream.
-  consume_each(num_consumed);
+  consume_each(noutput_items);
 
   // Tell runtime system how many output items we produced.
   return noutput_items;

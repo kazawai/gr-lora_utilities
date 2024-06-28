@@ -23,7 +23,7 @@ namespace first_lora {
  * https://wirelesspi.com/understanding-lora-phy-long-range-physical-layer/
  */
 class FIRST_LORA_API lora_detector : virtual public gr::block {
-public:
+ public:
   typedef std::shared_ptr<lora_detector> sptr;
 
   /*!
@@ -35,10 +35,10 @@ public:
    * creating new instances.
    */
   static sptr make(float threshold = 0.1, uint8_t sf = 7, uint32_t bw = 125000,
-                   uint32_t sr = 500000);
+                   uint32_t sr = 500000, int method = 0);
 };
 
-} // namespace first_lora
-} // namespace gr
+}  // namespace first_lora
+}  // namespace gr
 
 #endif /* INCLUDED_FIRST_LORA_LORA_DETECTOR_H */

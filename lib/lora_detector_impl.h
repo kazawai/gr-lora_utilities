@@ -30,6 +30,7 @@ class lora_detector_impl : public lora_detector {
   uint32_t d_bw;                        // Bandwidth
   uint32_t d_fs;                        // Sampling rate
   uint32_t d_sr;                        // Symbol rate
+  int d_method;                         // Method used
   uint32_t d_sps;                       // Samples per symbol (2^sf)
   uint32_t d_sn;                        // Number of samples
   std::vector<uint32_t> buffer;         // Buffer for LoRa symbol
@@ -133,8 +134,13 @@ class lora_detector_impl : public lora_detector {
    */
   uint32_t argmax_32f(const float *x, float *max, uint16_t n);
 
+  int compare_peak(const gr_complex *in, gr_complex *out);
+
+  int detect_preamble(const gr_complex *in, gr_complex *out, uint32_t n);
+
  public:
-  lora_detector_impl(float threshold, uint8_t sf, uint32_t bw, uint32_t sr);
+  lora_detector_impl(float threshold, uint8_t sf, uint32_t bw, uint32_t sr,
+                     int method);
   ~lora_detector_impl();
 
   // Where all the action really happens

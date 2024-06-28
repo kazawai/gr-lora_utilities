@@ -21,6 +21,10 @@ parameters:
   label: Sr
   default: ' 500000'
   dtype: float
+- id: method
+  label: Method (0 or 1)
+  default: '0'
+  dtype: int
 inputs:
 - label: in
   domain: stream
