@@ -18,7 +18,7 @@
 #include <vector>
 
 #define MIN_PREAMBLE_CHIRPS 4
-#define MAX_DRIFT 40
+#define MAX_DISTANCE 40
 
 namespace gr {
 namespace first_lora {
@@ -31,6 +31,7 @@ class lora_detector_impl : public lora_detector {
   uint32_t d_fs;                        // Sampling rate
   uint32_t d_sr;                        // Symbol rate
   int d_method;                         // Method used
+  int d_prev_detected = 0;              // Previous detected LoRa symbols
   uint32_t d_sps;                       // Samples per symbol (2^sf)
   uint32_t d_sn;                        // Number of samples
   std::vector<uint32_t> buffer;         // Buffer for LoRa symbol
@@ -43,15 +44,6 @@ class lora_detector_impl : public lora_detector {
   fftplan fft;                             // FFT plan
   std::vector<gr_complex> d_mult_hf_fft;   // FFT result
   bool detected = false;                   // Detected LoRa signal
-  /**
-   * @brief Dechirp LoRa symbol
-   * https://dl.acm.org/doi/10.1145/3546869#d1e1181
-   * @param in LoRa symbol
-   * @param block Dechirped LoRa symbol
-   * @return Value of LoRa symbol (dechirped)
-   */
-  int32_t dechirp(const gr_complex *in,
-                  gr_complex *block);  // Dechirp LoRa symbol
   /**
    * @brief Generate chirp signal
    * @param sf Spreading factor

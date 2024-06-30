@@ -3,7 +3,7 @@ label: lora detector
 category: '[First_lora]'
 templates:
   imports: 'from gnuradio import first_lora'
-  make: 'first_lora.lora_detector(${threshold}, ${sf}, ${bw}, ${sr})'
+  make: 'first_lora.lora_detector(${threshold}, ${sf}, ${bw}, ${sr}, ${method})'
 parameters:
 - id: threshold
   label: Threshold

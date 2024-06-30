@@ -77,11 +77,6 @@ void lora_detector_impl::forecast(int noutput_items,
   ninput_items_required[0] = noutput_items;
 }
 
-int32_t lora_detector_impl::dechirp(const gr_complex *in, gr_complex *block) {
-  volk_32fc_x2_multiply_32fc(block, in, &d_ref_downchip[0], d_sn);
-  return 0;
-}
-
 uint32_t lora_detector_impl::argmax_32f(const float *x, float *max,
                                         uint16_t n) {
   float mag = abs(x[0]);
@@ -106,8 +101,7 @@ uint32_t lora_detector_impl::get_fft_peak_abs(const lv_32fc_t *fft_r, float *b1,
   uint32_t peak = 0;
   *max = 0;
   volk_32fc_magnitude_32f(b1, fft_r, d_fft_size);
-  volk_32f_x2_add_32f(b2, b1, &b1[d_fft_size - d_bin_size],
-                      d_fft_size - d_bin_size);
+  volk_32f_x2_add_32f(b2, b1, &b1[d_fft_size - d_bin_size], d_bin_size);
   peak = argmax_32f(b2, max, d_bin_size);
   return peak;
 }
@@ -162,6 +156,16 @@ int lora_detector_impl::compare_peak(const gr_complex *in, gr_complex *out) {
 
 int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
                                         uint32_t n) {
+  // Check if there is a possible preamble
+  if (!compare_peak(in, out)) {
+    d_prev_detected = 0;
+    return 0;
+  }
+
+  if (d_prev_detected) {
+    return 1;
+  }
+
   // Since we only want to detect the preamble, we don't need to process the
   // downchirps
   gr_complex *up_blocks = (gr_complex *)volk_malloc(d_sn * sizeof(gr_complex),
@@ -171,8 +175,8 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
     return -1;
   }
 
-  // Dechirp
-  dechirp(in, up_blocks);
+  // Dechirp https://dl.acm.org/doi/10.1145/3546869#d1e1181
+  volk_32fc_x2_multiply_32fc(up_blocks, in, &d_ref_downchip[0], d_sn);
 
   // Buffer for FFT
   lv_32fc_t *fft_r = (lv_32fc_t *)malloc(d_fft_size * sizeof(lv_32fc_t));
@@ -206,7 +210,7 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
   }
   float max;
   uint32_t peak = get_fft_peak_abs(fft_r, b1, b2, &max);
-  buffer.push_back(peak);
+  buffer.insert(buffer.begin(), peak);
 
   // Free memory
   volk_free(up_blocks);
@@ -215,34 +219,33 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
   volk_free(b2);
 
   if (buffer.size() > MIN_PREAMBLE_CHIRPS) {
-    buffer.erase(buffer.begin());
+    buffer.pop_back();
+  }
+
+  if (buffer.size() < MIN_PREAMBLE_CHIRPS) {
+    return 0;
   }
 
   // Check if peak is above threshold
-  if (buffer.size() >= MIN_PREAMBLE_CHIRPS) {
-    detected = true;
-    // Preamble detected
-    // Check if preamble is valid (iterate over buffer)
-    // to check for maximum distance (drift)
-    for (unsigned long i = 1; i < buffer.size(); i++) {
-      if (buffer[i] - buffer[i - 1] > MAX_DRIFT) {
-        // Preamble is invalid
-        detected = false;
-      }
-    }
-
-    if (detected) {
-      // Preamble is valid
-      memcpy(out, in, n * sizeof(gr_complex));
-      detected = true;
+  int d_preamble_idx = buffer[0];
+  detected = true;
+  for (int i = 0; i < MIN_PREAMBLE_CHIRPS; i++) {
+    uint32_t distance =
+        ((int(d_preamble_idx) - int(buffer[i]) % d_bin_size) + d_bin_size) %
+        d_bin_size;
+    if (distance > MAX_DISTANCE && distance < d_bin_size - MAX_DISTANCE) {
+      detected = false;
+      break;
     }
   }
 
-  if (!detected) {
-    memset(out, 0, n * sizeof(gr_complex));
+  if (detected) {
+    std::cout << "Detected preamble\n";
+    // Reset buffer
+    buffer.clear();
   }
 
-  return 0;
+  return detected;
 }
 
 int lora_detector_impl::general_work(int noutput_items,
@@ -251,23 +254,26 @@ int lora_detector_impl::general_work(int noutput_items,
                                      gr_vector_void_star &output_items) {
   auto in = static_cast<const input_type *>(input_items[0]);
   auto out = static_cast<output_type *>(output_items[0]);
+  int detected = 0;
 
   switch (d_method) {
     case 1:
-      detect_preamble(in, out, noutput_items);
+      detected = detect_preamble(in, out, noutput_items);
+      d_prev_detected = detected;
       break;
     case 0: {
-      int detected = compare_peak(in, out);
-      if (detected)
-        memcpy(out, in, noutput_items * sizeof(gr_complex));
-      else
-        memset(out, 0, noutput_items * sizeof(gr_complex));
+      detected = compare_peak(in, out);
       break;
     }
     default:
       std::cerr << "Error: Invalid method\n";
       return -1;
   }
+
+  if (detected)
+    memcpy(out, in, noutput_items * sizeof(gr_complex));
+  else
+    memset(out, 0, noutput_items * sizeof(gr_complex));
 
   // Tell runtime system how many input items we consumed on
   // each input stream.
