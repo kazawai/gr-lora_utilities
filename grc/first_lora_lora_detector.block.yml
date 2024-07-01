@@ -25,6 +25,10 @@ parameters:
   label: Method (0 or 1)
   default: '0'
   dtype: int
+- id: write_refchirp_to_file
+  label: Write ref chirp to file
+  default: '1'
+  dtype: int
 inputs:
 - label: in
   domain: stream

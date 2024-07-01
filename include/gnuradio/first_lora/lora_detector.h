@@ -35,7 +35,8 @@ class FIRST_LORA_API lora_detector : virtual public gr::block {
    * creating new instances.
    */
   static sptr make(float threshold = 0.1, uint8_t sf = 7, uint32_t bw = 125000,
-                   uint32_t sr = 500000, int method = 0);
+                   uint32_t sr = 500000, int method = 0,
+                   int write_refchirp_to_file = 1);
 };
 
 }  // namespace first_lora

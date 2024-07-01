@@ -31,21 +31,27 @@ class lora_detector_impl : public lora_detector {
   uint32_t d_fs;                        // Sampling rate
   uint32_t d_sr;                        // Symbol rate
   int d_method;                         // Method used
+  int d_write_refchirp_to_file;         // Write reference chirp to file
   int d_prev_detected = 0;              // Previous detected LoRa symbols
   uint32_t d_sps;                       // Samples per symbol (2^sf)
   uint32_t d_sn;                        // Number of samples
   std::vector<uint32_t> buffer;         // Buffer for LoRa symbol
   std::vector<gr_complex> d_dechirped;  // Dechirped samples
-  std::vector<gr_complex> d_ref_downchip;  // Downchip reference signal
-  int32_t index;                           // Index for buffer
-  uint8_t detected_count = 0;              // Number of detected LoRa symbols
-  uint16_t d_fft_size;                     // FFT size
-  uint16_t d_bin_size;                     // Bin size (d_fft_size / 2)
-  fftplan fft;                             // FFT plan
-  std::vector<gr_complex> d_mult_hf_fft;   // FFT result
-  bool detected = false;                   // Detected LoRa signal
+  std::vector<gr_complex> d_ref_downchirp;  // Downchirp reference signal
+  std::vector<gr_complex> d_ref_upchirp;    // Upchirp reference signal
+  uint8_t detected_count = 0;               // Number of detected LoRa symbols
+  uint16_t d_fft_size;                      // FFT size
+  uint16_t d_bin_size;                      // Bin size (d_fft_size / 2)
+  fftplan fft;                              // FFT plan
+  std::vector<gr_complex> d_mult_hf_fft;    // FFT result
+  int d_sfd_recovery = 0;                   // SFD recovery count
+  bool detected = false;                    // Detected LoRa signal
+  int d_state = 0;                          // State of the detector
   /**
    * @brief Generate chirp signal
+   * chirp(t;f_0) = A(t)exp(j2π(f_0 + (B/2T)t)t) (where A(t) is the amplitude
+   * envelope, f_0 is the initial frequency, B is the bandwidth, and T is the
+   * chirp period)
    * @param sf Spreading factor
    * @param bw Bandwidth
    * @param fs Sampling rate
@@ -55,9 +61,29 @@ class lora_detector_impl : public lora_detector {
   std::vector<gr_complex> g_chirp(uint8_t sf, uint32_t bw, uint32_t fs,
                                   bool upchirp) {
     std::vector<gr_complex> chirp;
+    uint32_t n = (1 << sf);
+    double T = n / (double)fs;
+    for (ulong i = 0; i < n; i++) {
+      double t = i / (double)fs;
+      double phase = 2 * M_PI * (bw / (2 * T) * t * t);
+      if (!upchirp) {
+        phase = -phase;
+      }
+      chirp.push_back(gr_complex(std::cos(phase), std::sin(phase)));
+    }
+    return chirp;
+  }
+
+  /**
+   * @brief Generate chirp signal (equivalent method to the traditional one)
+   * @see g_chirp
+   */
+  std::vector<gr_complex> g_chirp2(uint8_t sf, uint32_t bw, uint32_t fs,
+                                   bool upchirp) {
+    std::vector<gr_complex> chirp;
     uint32_t n = 1 << sf;
     double fsr = (double)fs / bw;
-    for (int i = 0; i < n; i++) {
+    for (ulong i = 0; i < n; i++) {
       double phase = M_PI / (int)fsr * (i - i * i / (double)n);
       chirp.push_back(gr_complex(std::polar(1.0, upchirp ? phase : -phase)));
     }
@@ -83,6 +109,9 @@ class lora_detector_impl : public lora_detector {
   std::vector<gr_complex> g_upchirp(uint8_t sf, uint32_t bw, uint32_t fs) {
     return g_chirp(sf, bw, fs, true);
   }
+
+  int write_chirp_to_file(const std::vector<gr_complex> &chirp,
+                          const char *filename);
 
   /**
    * @brief Get peak of FFT using ABS comparaison
@@ -128,11 +157,14 @@ class lora_detector_impl : public lora_detector {
 
   int compare_peak(const gr_complex *in, gr_complex *out);
 
-  int detect_preamble(const gr_complex *in, gr_complex *out, uint32_t n);
+  int detect_preamble(const gr_complex *in, gr_complex *out, uint32_t *n);
+
+  int detect_sfd(const gr_complex *in, gr_complex *out, uint32_t *n,
+                 gr_complex *down_blocks, float max);
 
  public:
   lora_detector_impl(float threshold, uint8_t sf, uint32_t bw, uint32_t sr,
-                     int method);
+                     int method, int write_refchirp_to_file);
   ~lora_detector_impl();
 
   // Where all the action really happens

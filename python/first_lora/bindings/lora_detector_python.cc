@@ -16,7 +16,7 @@
 /* BINDTOOL_GEN_AUTOMATIC(0) */
 /* BINDTOOL_USE_PYGCCXML(0) */
 /* BINDTOOL_HEADER_FILE(lora_detector.h) */
-/* BINDTOOL_HEADER_FILE_HASH(5113dbac96f781d683a167ff179d2af9) */
+/* BINDTOOL_HEADER_FILE_HASH(2fcd1b48cc9aab877eedfb4b30d188d0) */
 /***********************************************************************************/
 
 #include <pybind11/complex.h>
@@ -40,7 +40,8 @@ void bind_lora_detector(py::module &m) {
       .def(py::init(&lora_detector::make),
            py::arg("threshold") = 0.10000000000000001, py::arg("sf") = 7,
            py::arg("bw") = 125000, py::arg("sr") = 500000,
-           py::arg("method") = 0, D(lora_detector, make))
+           py::arg("method") = 0, py::arg("write_refchirp_to_file") = 1,
+           D(lora_detector, make))
 
       ;
 }
