@@ -449,7 +449,7 @@ int lora_detector_impl::general_work(int noutput_items,
     memset(out, 0, noutput_items * sizeof(gr_complex));
 
   // Set the output to be the reference downchirp
-  memcpy(out, &d_ref_downchirp[0], noutput_items * sizeof(gr_complex));
+  // memcpy(out, &d_ref_downchirp[0], noutput_items * sizeof(gr_complex));
 
   // Tell runtime system how many output items we produced.
   return noutput_items;

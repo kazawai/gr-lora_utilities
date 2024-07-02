@@ -111,7 +111,7 @@ class lora_detector_impl : public lora_detector {
    * @return Downchirp signal
    */
   std::vector<gr_complex> g_downchirp(uint8_t sf, uint32_t bw, uint32_t fs) {
-    return g_chirp3(sf, bw, fs, false);
+    return g_chirp(sf, bw, fs, false);
   }
   /**
    * @brief Generate upchirp signal
@@ -121,7 +121,7 @@ class lora_detector_impl : public lora_detector {
    * @return Upchirp signal
    */
   std::vector<gr_complex> g_upchirp(uint8_t sf, uint32_t bw, uint32_t fs) {
-    return g_chirp3(sf, bw, fs, true);
+    return g_chirp(sf, bw, fs, true);
   }
 
   int write_chirp_to_file(const std::vector<gr_complex> &chirp,
