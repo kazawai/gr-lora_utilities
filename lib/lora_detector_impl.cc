@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <new>
 
 namespace gr {
 namespace first_lora {
@@ -85,7 +86,10 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
 /*
  * Our virtual destructor.
  */
-lora_detector_impl::~lora_detector_impl() { /* <+destructor+> */ }
+lora_detector_impl::~lora_detector_impl() {
+  // Free memory
+  buffer.clear();
+}
 
 void lora_detector_impl::forecast(int noutput_items,
                                   gr_vector_int &ninput_items_required) {
@@ -119,6 +123,10 @@ uint32_t lora_detector_impl::get_fft_peak_abs(const lv_32fc_t *fft_r, float *b1,
   volk_32f_x2_add_32f(b2, b1, &b1[d_fft_size - d_bin_size], d_bin_size);
   peak = argmax_32f(b2, max, d_bin_size);
   return peak;
+
+  // Compute the peak of the FFT using the absolute value
+  // uint32_t peak = 0;
+  // *max = 0;
 }
 
 uint32_t lora_detector_impl::get_fft_peak_phase(const lv_32fc_t *fft_r,
@@ -212,10 +220,6 @@ int write_symbol_to_file(const std::vector<gr_complex> &symbol,
 
 int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
                                         uint32_t *n) {
-  if (buffer.size() < MIN_PREAMBLE_CHIRPS) {
-    return 0;
-  }
-
   // Check if peak is above threshold
   int d_preamble_idx = buffer[0];
   bool preamble_detected = true;
@@ -232,22 +236,13 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
 
   if (preamble_detected) {
     std::cout << "Detected preamble\n";
-    d_state = 1;
+    d_state = 3;
     // Move preamble peak to bin zero
     *n = d_sn - 2 * d_preamble_idx / 10;
     std::cout << "Buffer size: " << buffer.size() << std::endl;
     for (int i = 0; i < buffer.size(); i++) {
       std::cout << buffer[i] << std::endl;
     }
-    // Write preamble to file
-    std::vector<gr_complex> preamble;
-    for (int i = 0; i < MIN_PREAMBLE_CHIRPS; i++) {
-      // Copy signal to preamble
-      for (uint32_t j = 0; j < d_sn; j++) {
-        preamble.push_back(in[j]);
-      }
-    }
-    write_symbol_to_file(preamble, "/tmp/preamble.bin");
   }
 
   return 0;
@@ -257,9 +252,7 @@ int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
                                    uint32_t *n, gr_complex *down_blocks,
                                    float max) {
   if (d_sfd_recovery++ > 10) {
-    buffer.clear();
     d_state = 0;
-    d_sfd_recovery = 0;
     std::cout << "SFD recovery failed\n";
   }
 
@@ -304,10 +297,8 @@ int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
 
   if (max_sfd >= max) {
     std::cout << "Detected SFD\n";
-    buffer.clear();
     d_state = 0;
     detected = true;
-    d_sfd_recovery = 0;
   } else {
     detected = false;
   }
@@ -319,11 +310,18 @@ int lora_detector_impl::general_work(int noutput_items,
                                      gr_vector_int &ninput_items,
                                      gr_vector_const_void_star &input_items,
                                      gr_vector_void_star &output_items) {
+  if (ninput_items[0] < (int)(DEMOD_HISTORY * d_sn))
+    return 0;  // Not enough input
   auto in0 = static_cast<const input_type *>(input_items[0]);
-  auto in = &in0[d_sn * (DEMOD_HISTORY - 1)];
+  auto in = &in0[d_sn * (DEMOD_HISTORY - 1)];  // Get the last lora symbol
   auto out = static_cast<output_type *>(output_items[0]);
   uint32_t num_consumed = d_sn;
   detected = false;
+
+  // Set the output to be the reference downchirp
+  // memcpy(out, &d_ref_downchirp[0], d_sn * sizeof(gr_complex));
+  // consume_each(d_sn);
+  // return noutput_items;
 
   switch (d_method) {
     case 1: {
@@ -399,8 +397,26 @@ int lora_detector_impl::general_work(int noutput_items,
       }
       float max;
       uint32_t peak = get_fft_peak_abs(fft_r, b1, b2, &max);
-      buffer.insert(buffer.begin(), peak);
-      // std::cout << "Peak: " << peak << " Max: " << max << std::endl;
+      if (peak != 0 && max != 0) buffer.insert(buffer.begin(), peak);
+      // std::cout << "\n--------------\nPeak: " << peak << " Max: " << max
+      //           << "\n--------------\n"
+      //           << std::endl;
+      if (peak == 0 && max == 0) {
+        std::cout << "Original signal :\n" << std::endl;
+        for (int i = 0; i < 10; i++) {
+          std::cout << in[i] << std::endl;
+        }
+
+        std::cout << "Upchirp signal :\n" << std::endl;
+        for (int i = 0; i < 10; i++) {
+          std::cout << up_blocks[i] << std::endl;
+        }
+
+        std::cout << "FFT result :\n" << std::endl;
+        for (int i = 0; i < 10; i++) {
+          std::cout << fft_r[i] << std::endl;
+        }
+      }
 
       // Free memory
       volk_free(up_blocks);
@@ -414,28 +430,31 @@ int lora_detector_impl::general_work(int noutput_items,
 
       switch (d_state) {
         case 0:
-          if (buffer.size() < MIN_PREAMBLE_CHIRPS) {
-            consume_each(num_consumed);
-            break;
-          }
-          detect_preamble(in, out, &num_consumed);
-          consume_each(num_consumed);
+          buffer.clear();
+          d_sfd_recovery = 0;
+          d_state = 1;
+          // std::cout << "State 0\n";
           break;
         case 1:
+          if (buffer.size() >= MIN_PREAMBLE_CHIRPS) d_state = 2;
+          // std::cout << "State 1\n";
+          break;
+        case 2:
+          // std::cout << "State 2\n";
+          detect_preamble(in, out, &num_consumed);
+          break;
+        case 3:
+          // std::cout << "State 3\n";
           detected = detect_sfd(in, out, &num_consumed, down_blocks, max);
           d_prev_detected = detected;
-          if (detected) {
-            consume_each(noutput_items);
-          } else {
-            consume_each(num_consumed);
-          }
+          if (detected) num_consumed = noutput_items;
           break;
       }
       break;
     }
     case 0: {
       detected = compare_peak(in, out);
-      consume_each(noutput_items);
+      num_consumed = noutput_items;
       break;
     }
     default:
@@ -443,16 +462,22 @@ int lora_detector_impl::general_work(int noutput_items,
       return -1;
   }
 
+  consume_each(num_consumed);
+
   if (detected) {
     memcpy(out, in, noutput_items * sizeof(gr_complex));
-  } else
+    return noutput_items;
+  } else {
+    // If no peak is detected, we do not want to output anything
     memset(out, 0, noutput_items * sizeof(gr_complex));
+    return 0;
+  }
 
   // Set the output to be the reference downchirp
   // memcpy(out, &d_ref_downchirp[0], noutput_items * sizeof(gr_complex));
 
   // Tell runtime system how many output items we produced.
-  return noutput_items;
+  // return noutput_items;
 }
 
 } /* namespace first_lora */

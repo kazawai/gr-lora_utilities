@@ -83,9 +83,9 @@ class lora_detector_impl : public lora_detector {
                                    bool upchirp) {
     std::vector<gr_complex> chirp;
     uint32_t n = (1 << sf) * 2;
-    int fsr = 2;
+    int fsr = (int)fs / bw;
     for (ulong i = 0; i < n; i++) {
-      double phase = M_PI / fsr * (i - i * i / (double)n);
+      double phase = M_PI / fsr * (i - i * i / (float)n);
       chirp.push_back(gr_complex(std::polar(1.0, upchirp ? -phase : phase)));
     }
     return chirp;
@@ -111,7 +111,7 @@ class lora_detector_impl : public lora_detector {
    * @return Downchirp signal
    */
   std::vector<gr_complex> g_downchirp(uint8_t sf, uint32_t bw, uint32_t fs) {
-    return g_chirp(sf, bw, fs, false);
+    return g_chirp2(sf, bw, fs, false);
   }
   /**
    * @brief Generate upchirp signal
@@ -121,7 +121,7 @@ class lora_detector_impl : public lora_detector {
    * @return Upchirp signal
    */
   std::vector<gr_complex> g_upchirp(uint8_t sf, uint32_t bw, uint32_t fs) {
-    return g_chirp(sf, bw, fs, true);
+    return g_chirp2(sf, bw, fs, true);
   }
 
   int write_chirp_to_file(const std::vector<gr_complex> &chirp,
