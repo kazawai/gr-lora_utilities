@@ -75,7 +75,9 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
     write_chirp_to_file(d_ref_downchirp, "/tmp/refchirp.dat");
   }
 
-  d_dechirped.reserve(d_sps);
+  d_dechirped.reserve(d_sn);
+
+  d_state = 0;
 
   set_history(DEMOD_HISTORY * d_sn);
 }
@@ -151,7 +153,7 @@ uint32_t lora_detector_impl::fft_add(const lv_32fc_t *fft_result, float *buffer,
 
 int lora_detector_impl::compare_peak(const gr_complex *in, gr_complex *out) {
   float max_amplitude = 0.0;
-  for (int i = 0; i < d_sps; i++) {
+  for (ulong i = 0; i < d_sn; i++) {
     // Compute the amplitude of the received sample
     float amplitude = std::abs(in[i]);
 
@@ -190,6 +192,24 @@ int lora_detector_impl::write_chirp_to_file(
   return 0;
 }
 
+int write_symbol_to_file(const std::vector<gr_complex> &symbol,
+                         const char *filename) {
+  std::cout << "Writing symbol to file\n";
+  FILE *file = fopen(filename, "w");
+  if (file == NULL) {
+    std::cerr << "Error: Failed to open file\n";
+    return -1;
+  }
+
+  for (ulong i = 0; i < symbol.size(); i++) {
+    fprintf(file, "%f %f\n", symbol[i].real(), symbol[i].imag());
+  }
+
+  fclose(file);
+  std::cout << "Symbol written to file\n";
+  return 0;
+}
+
 int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
                                         uint32_t *n) {
   if (buffer.size() < MIN_PREAMBLE_CHIRPS) {
@@ -198,25 +218,36 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
 
   // Check if peak is above threshold
   int d_preamble_idx = buffer[0];
-  detected = true;
-  for (int i = 0; i < MIN_PREAMBLE_CHIRPS; i++) {
+  bool preamble_detected = true;
+  for (int i = 1; i < MIN_PREAMBLE_CHIRPS; i++) {
     // Python style modulo to garantee positive result
     uint32_t distance =
         ((int(d_preamble_idx) - int(buffer[i]) % d_bin_size) + d_bin_size) %
         d_bin_size;
-    if (distance > MAX_DISTANCE && distance < d_bin_size - MAX_DISTANCE) {
-      detected = false;
+    if (distance > MAX_DISTANCE) {
+      preamble_detected = false;
       break;
     }
   }
 
-  *n = 0;
-
-  if (detected) {
+  if (preamble_detected) {
     std::cout << "Detected preamble\n";
     d_state = 1;
     // Move preamble peak to bin zero
     *n = d_sn - 2 * d_preamble_idx / 10;
+    std::cout << "Buffer size: " << buffer.size() << std::endl;
+    for (int i = 0; i < buffer.size(); i++) {
+      std::cout << buffer[i] << std::endl;
+    }
+    // Write preamble to file
+    std::vector<gr_complex> preamble;
+    for (int i = 0; i < MIN_PREAMBLE_CHIRPS; i++) {
+      // Copy signal to preamble
+      for (uint32_t j = 0; j < d_sn; j++) {
+        preamble.push_back(in[j]);
+      }
+    }
+    write_symbol_to_file(preamble, "/tmp/preamble.bin");
   }
 
   return 0;
@@ -225,6 +256,13 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
 int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
                                    uint32_t *n, gr_complex *down_blocks,
                                    float max) {
+  if (d_sfd_recovery++ > 10) {
+    buffer.clear();
+    d_state = 0;
+    d_sfd_recovery = 0;
+    std::cout << "SFD recovery failed\n";
+  }
+
   volk_32fc_x2_multiply_32fc(down_blocks, in, &d_ref_upchirp[0], d_sn);
 
   // Copy dechirped signal to d_mult_hf_fft
@@ -260,6 +298,10 @@ int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
   float max_sfd;
   uint32_t _ = get_fft_peak_abs(fft_r, b1, b2, &max_sfd);
 
+  free(fft_r);
+  free(b1);
+  free(b2);
+
   if (max_sfd >= max) {
     std::cout << "Detected SFD\n";
     buffer.clear();
@@ -268,12 +310,6 @@ int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
     d_sfd_recovery = 0;
   } else {
     detected = false;
-    if (d_sfd_recovery++ > 4) {
-      buffer.clear();
-      d_state = 0;
-      d_sfd_recovery = 0;
-      std::cout << "SFD recovery failed\n";
-    }
   }
 
   return detected;
@@ -286,26 +322,31 @@ int lora_detector_impl::general_work(int noutput_items,
   auto in0 = static_cast<const input_type *>(input_items[0]);
   auto in = &in0[d_sn * (DEMOD_HISTORY - 1)];
   auto out = static_cast<output_type *>(output_items[0]);
-  int detected = 0;
   uint32_t num_consumed = d_sn;
+  detected = false;
 
   switch (d_method) {
     case 1: {
       // Check if there is a possible preamble
-      if (!compare_peak(in, out)) {
-        d_prev_detected = 0;
-        buffer.clear();
-        memset(out, 0, noutput_items * sizeof(gr_complex));
-        consume_each(noutput_items);
-        return noutput_items;
-      }
+      // if (!compare_peak(in, out)) {
+      //   d_prev_detected = 0;
+      //   buffer.clear();
+      //   detected = false;
+      //   memset(out, 0, noutput_items * sizeof(gr_complex));
+      //   consume_each(noutput_items);
+      //   std::cout << "No peak detected\n";
+      //   return noutput_items;
+      // }
+      //
+      // if (d_prev_detected) {
+      //   buffer.clear();
+      //   memcpy(out, in, noutput_items * sizeof(gr_complex));
+      //   consume_each(noutput_items);
+      //   std::cout << "Still in frame\n";
+      //   return noutput_items;
+      // }
 
-      if (d_prev_detected) {
-        buffer.clear();
-        memcpy(out, in, noutput_items * sizeof(gr_complex));
-        consume_each(noutput_items);
-        return noutput_items;
-      }
+      // std::cout << "New frame (peak detected)\n";
 
       gr_complex *up_blocks = (gr_complex *)volk_malloc(
           d_fft_size * sizeof(gr_complex), volk_get_alignment());
@@ -359,6 +400,7 @@ int lora_detector_impl::general_work(int noutput_items,
       float max;
       uint32_t peak = get_fft_peak_abs(fft_r, b1, b2, &max);
       buffer.insert(buffer.begin(), peak);
+      // std::cout << "Peak: " << peak << " Max: " << max << std::endl;
 
       // Free memory
       volk_free(up_blocks);
@@ -373,13 +415,10 @@ int lora_detector_impl::general_work(int noutput_items,
       switch (d_state) {
         case 0:
           if (buffer.size() < MIN_PREAMBLE_CHIRPS) {
-            consume_each(noutput_items);
+            consume_each(num_consumed);
             break;
           }
           detect_preamble(in, out, &num_consumed);
-          if (num_consumed == 0) {
-            num_consumed = noutput_items;
-          }
           consume_each(num_consumed);
           break;
         case 1:
@@ -404,10 +443,13 @@ int lora_detector_impl::general_work(int noutput_items,
       return -1;
   }
 
-  if (detected)
+  if (detected) {
     memcpy(out, in, noutput_items * sizeof(gr_complex));
-  else
+  } else
     memset(out, 0, noutput_items * sizeof(gr_complex));
+
+  // Set the output to be the reference downchirp
+  memcpy(out, &d_ref_downchirp[0], noutput_items * sizeof(gr_complex));
 
   // Tell runtime system how many output items we produced.
   return noutput_items;
