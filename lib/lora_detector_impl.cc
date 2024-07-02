@@ -64,6 +64,7 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
   d_sr = sr;
   d_fft_size = 10 * d_sn;
   d_bin_size = 10 * d_sps;
+  d_cfo = 0;
   // FFT input vector
   d_mult_hf_fft = std::vector<gr_complex>(d_fft_size);
 
@@ -94,7 +95,7 @@ lora_detector_impl::~lora_detector_impl() {
 void lora_detector_impl::forecast(int noutput_items,
                                   gr_vector_int &ninput_items_required) {
   /* <+forecast+> e.g. ninput_items_required[0] = noutput_items */
-  ninput_items_required[0] = noutput_items;
+  ninput_items_required[0] = noutput_items * (1 << d_sf) * 2;
 }
 
 uint32_t lora_detector_impl::argmax_32f(const float *x, float *max,
@@ -119,14 +120,13 @@ uint32_t lora_detector_impl::get_fft_peak_abs(const lv_32fc_t *fft_r, float *b1,
                                               float *b2, float *max) {
   uint32_t peak = 0;
   *max = 0;
+  // Compute the magnitude of the FFT in b1
   volk_32fc_magnitude_32f(b1, fft_r, d_fft_size);
+  // Add the last part of the FFT to the first part.
+  // This is the CPA proposed in the paper to determine the phase misalignment
   volk_32f_x2_add_32f(b2, b1, &b1[d_fft_size - d_bin_size], d_bin_size);
   peak = argmax_32f(b2, max, d_bin_size);
   return peak;
-
-  // Compute the peak of the FFT using the absolute value
-  // uint32_t peak = 0;
-  // *max = 0;
 }
 
 uint32_t lora_detector_impl::get_fft_peak_phase(const lv_32fc_t *fft_r,
@@ -136,6 +136,7 @@ uint32_t lora_detector_impl::get_fft_peak_phase(const lv_32fc_t *fft_r,
   uint32_t tmp_max_idx = 0;
   float tmp_max_val;
   uint32_t peak = 0;
+  // This is the FPA proposed in the paper to determine the phase misalignment
   for (int i = 0; i < 4; i++) {
     float phase_offset = 2 * M_PI / 4 * i;
     tmp_max_idx = fft_add(fft_r, b2, buffer_c, &tmp_max_val, phase_offset);
@@ -228,7 +229,7 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
     uint32_t distance =
         ((int(d_preamble_idx) - int(buffer[i]) % d_bin_size) + d_bin_size) %
         d_bin_size;
-    if (distance > MAX_DISTANCE) {
+    if (distance > MAX_DISTANCE && distance < d_bin_size - MAX_DISTANCE) {
       preamble_detected = false;
       break;
     }
@@ -250,7 +251,8 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out,
 
 int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
                                    uint32_t *n, gr_complex *down_blocks,
-                                   float max) {
+                                   gr_complex *up_blocks, float max,
+                                   const gr_complex *in0) {
   if (d_sfd_recovery++ > 10) {
     d_state = 0;
     std::cout << "SFD recovery failed\n";
@@ -289,7 +291,7 @@ int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
   }
 
   float max_sfd;
-  uint32_t _ = get_fft_peak_abs(fft_r, b1, b2, &max_sfd);
+  uint32_t max_sfd_idx = get_fft_peak_abs(fft_r, b1, b2, &max_sfd);
 
   free(fft_r);
   free(b1);
@@ -297,7 +299,40 @@ int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
 
   if (max_sfd >= max) {
     std::cout << "Detected SFD\n";
-    d_state = 0;
+
+    // CFO estimation
+    if (max_sfd_idx > d_bin_size / 2) {
+      max_sfd_idx = max_sfd_idx - d_bin_size;
+    }
+    *n = (int)round(2.25 * d_sn + 2.0 * max_sfd_idx / 2 * 10);
+
+    // Multiply the signal with the downchirp
+    volk_32fc_x2_multiply_32fc(
+        up_blocks, &in0[(int)round((DEMOD_HISTORY - 6.25) * d_sn) + *n],
+        &d_ref_downchirp[0], d_sn);
+    memset(&d_mult_hf_fft[0], 0, d_fft_size * sizeof(gr_complex));
+    memcpy(&d_mult_hf_fft[0], up_blocks, d_sn * sizeof(gr_complex));
+
+    fft = fft_create_plan(d_fft_size, &d_mult_hf_fft[0], fft_r,
+                          LIQUID_FFT_FORWARD, 0);
+
+    fft_execute(fft);
+
+    fft_destroy_plan(fft);
+
+    float *b3 =
+        (float *)volk_malloc(d_fft_size * sizeof(float), volk_get_alignment());
+    float *b4 =
+        (float *)volk_malloc(d_bin_size * sizeof(float), volk_get_alignment());
+
+    if (b3 == NULL || b4 == NULL) {
+      std::cerr << "Error: Failed to allocate memory for b3 or b4\n";
+      return -1;
+    }
+
+    d_cfo = (float)get_fft_peak_abs(fft_r, b3, b4, &max_sfd);
+
+    d_state = 4;
     detected = true;
   } else {
     detected = false;
@@ -372,7 +407,7 @@ int lora_detector_impl::general_work(int noutput_items,
         return -1;
       }
 
-      // Copy dechirped signal to d_mult_hf_fft
+      // Copy dechirped signal to d_mult_hf_fft (zero padding)
       memset(&d_mult_hf_fft[0], 0, d_fft_size * sizeof(gr_complex));
       memcpy(&d_mult_hf_fft[0], &up_blocks[0], d_sn * sizeof(gr_complex));
 
@@ -429,25 +464,29 @@ int lora_detector_impl::general_work(int noutput_items,
       }
 
       switch (d_state) {
-        case 0:
+        case 0:  // Reset state
           buffer.clear();
           d_sfd_recovery = 0;
           d_state = 1;
           // std::cout << "State 0\n";
           break;
-        case 1:
+        case 1:  // Buffering for preamble
           if (buffer.size() >= MIN_PREAMBLE_CHIRPS) d_state = 2;
           // std::cout << "State 1\n";
           break;
-        case 2:
+        case 2:  // Preamble
           // std::cout << "State 2\n";
           detect_preamble(in, out, &num_consumed);
           break;
-        case 3:
+        case 3:  // SFD
           // std::cout << "State 3\n";
-          detected = detect_sfd(in, out, &num_consumed, down_blocks, max);
+          detected = detect_sfd(in, out, &num_consumed, down_blocks, up_blocks,
+                                max, in0);
           d_prev_detected = detected;
           if (detected) num_consumed = noutput_items;
+          break;
+        case 4:  // Header
+          // std::cout << "State 4\n";
           break;
       }
       break;

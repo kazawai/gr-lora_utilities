@@ -19,7 +19,7 @@
 #include <vector>
 
 #define MIN_PREAMBLE_CHIRPS 4
-#define MAX_DISTANCE 20
+#define MAX_DISTANCE 10
 
 namespace gr {
 namespace first_lora {
@@ -36,6 +36,7 @@ class lora_detector_impl : public lora_detector {
   int d_prev_detected = 0;              // Previous detected LoRa symbols
   uint32_t d_sps;                       // Samples per symbol (2^sf)
   uint32_t d_sn;                        // Number of samples
+  float d_cfo;                          // Carrier frequency offset
   std::vector<uint32_t> buffer;         // Buffer for LoRa symbol
   std::vector<gr_complex> d_dechirped;  // Dechirped samples
   std::vector<gr_complex> d_ref_downchirp;  // Downchirp reference signal
@@ -174,7 +175,8 @@ class lora_detector_impl : public lora_detector {
   int detect_preamble(const gr_complex *in, gr_complex *out, uint32_t *n);
 
   int detect_sfd(const gr_complex *in, gr_complex *out, uint32_t *n,
-                 gr_complex *down_blocks, float max);
+                 gr_complex *down_blocks, gr_complex *up_blocks, float max,
+                 const gr_complex *in0);
 
  public:
   lora_detector_impl(float threshold, uint8_t sf, uint32_t bw, uint32_t sr,
