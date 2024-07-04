@@ -282,27 +282,18 @@ std::pair<float, uint32_t> lora_detector_impl::dechirp(const gr_complex *in,
 int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out) {
   int num_consumed = d_sn;
   // Check if peak is above threshold
-  int d_preamble_idx = buffer[0];
-  bool preamble_detected = true;
-  for (int i = 1; i < MIN_PREAMBLE_CHIRPS; i++) {
-    // Python style modulo to garantee positive result
-    uint32_t distance =
-        ((int(d_preamble_idx) - int(buffer[i]) % d_bin_size) + d_bin_size) %
-        d_bin_size;
-    if (distance > d_bin_size / 2) {
-      distance = d_bin_size - distance;
-    }
-    if (distance > MAX_DISTANCE) {
-      preamble_detected = false;
-      break;
-    }
+  bool preamble_detected = false;
+  if (buffer.size() < MIN_PREAMBLE_CHIRPS) {
+    return num_consumed;
+  } else {
+    preamble_detected = true;
   }
 
   if (preamble_detected) {
     std::cout << "Detected preamble\n";
-    d_state = 3;
+    d_state = 2;
     // Move preamble peak to bin zero
-    num_consumed = d_sn - 2 * d_preamble_idx / 10;
+    num_consumed = d_sn - 2 * buffer[0] / 10;
     std::cout << "Buffer size: " << buffer.size() << std::endl;
     for (ulong i = 0; i < buffer.size(); i++) {
       std::cout << buffer[i] << std::endl;
@@ -332,7 +323,7 @@ int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
   std::cout << "SFD detected\n";
   std::cout << "Up: " << up_val << " Down: " << down_val << std::endl;
   detected = true;
-  d_state = 4;
+  d_state = 3;
   return num_consumed;
 }
 
@@ -390,6 +381,11 @@ int lora_detector_impl::cfo_estimation(const gr_complex *in, gr_complex *out,
   return num_consumed;
 }
 
+inline double realmod(float x, float y) {
+  float result = fmod(x, y);
+  return result >= 0 ? result : result + y;
+}
+
 int lora_detector_impl::general_work(int noutput_items,
                                      gr_vector_int &ninput_items,
                                      gr_vector_const_void_star &input_items,
@@ -411,14 +407,23 @@ int lora_detector_impl::general_work(int noutput_items,
       // Dechirp
       auto [up_val, up_idx] = dechirp(in, true);
       d_max_val = up_val;
-      if (up_idx != 0 && up_val != 0) buffer.insert(buffer.begin(), up_idx);
+      if (!buffer.empty()) {
+        float distance = realmod(up_idx - buffer[0], d_bin_size);
+        if (distance > (float)d_bin_size / 2) {
+          distance = d_bin_size - distance;
+        }
+        if (distance <= MAX_DISTANCE) {
+          buffer.insert(buffer.begin(), up_idx);
+        } else {
+          buffer.clear();
+          buffer.insert(buffer.begin(), up_idx);
+        }
+      } else {
+        buffer.insert(buffer.begin(), up_idx);
+      }
       // std::cout << "\n--------------\nPeak: " << peak << " Max: " << max
       //           << "\n--------------\n"
       //           << std::endl;
-
-      if (buffer.size() > MIN_PREAMBLE_CHIRPS) {
-        buffer.pop_back();
-      }
 
       switch (d_state) {
         case 0:  // Reset state
@@ -428,21 +433,17 @@ int lora_detector_impl::general_work(int noutput_items,
           d_state = 1;
           // std::cout << "State 0\n";
           break;
-        case 1:  // Buffering for preamble
-          if (buffer.size() >= MIN_PREAMBLE_CHIRPS) d_state = 2;
-          // std::cout << "State 1\n";
-          break;
-        case 2:  // Preamble
+        case 1:  // Preamble
           // std::cout << "State 2\n";
           num_consumed = detect_preamble(in, out);
           d_max_val = up_val;
           break;
-        case 3:  // SFD
+        case 2:  // SFD
           // std::cout << "State 3\n";
           num_consumed = detect_sfd(in, out, in0);
           if (detected) num_consumed = noutput_items;
           break;
-        case 4:  // CFO estimation
+        case 3:  // CFO estimation
           // std::cout << "State 4\n";
           num_consumed = cfo_estimation(in, out, in0);
           num_consumed = noutput_items;
