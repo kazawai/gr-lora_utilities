@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <vector>
 
-#define MIN_PREAMBLE_CHIRPS 6
+#define MIN_PREAMBLE_CHIRPS 8
 #define MAX_DISTANCE 5
 
 namespace gr {

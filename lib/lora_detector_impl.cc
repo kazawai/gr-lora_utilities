@@ -22,7 +22,6 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
-#include <new>
 
 namespace gr {
 namespace first_lora {
@@ -290,7 +289,10 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out) {
     uint32_t distance =
         ((int(d_preamble_idx) - int(buffer[i]) % d_bin_size) + d_bin_size) %
         d_bin_size;
-    if (distance > MAX_DISTANCE && distance < d_bin_size - MAX_DISTANCE) {
+    if (distance > d_bin_size / 2) {
+      distance = d_bin_size - distance;
+    }
+    if (distance > MAX_DISTANCE) {
       preamble_detected = false;
       break;
     }
@@ -323,7 +325,7 @@ int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
   auto [up_val, up_idx] = dechirp(in, true);
   auto [down_val, down_idx] = dechirp(in, false);
   // If absolute value of down_val is greater then we are in the sfd
-  if (abs(up_val) * 1.5 >= abs(down_val)) {
+  if (abs(up_val) >= abs(down_val)) {
     return num_consumed;
   }
 
