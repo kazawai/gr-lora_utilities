@@ -18,8 +18,8 @@
 #include <cstdint>
 #include <vector>
 
-#define MIN_PREAMBLE_CHIRPS 4
-#define MAX_DISTANCE 10
+#define MIN_PREAMBLE_CHIRPS 6
+#define MAX_DISTANCE 5
 
 namespace gr {
 namespace first_lora {
@@ -37,6 +37,7 @@ class lora_detector_impl : public lora_detector {
   uint32_t d_sps;                       // Samples per symbol (2^sf)
   uint32_t d_sn;                        // Number of samples
   float d_cfo;                          // Carrier frequency offset
+  float d_max_val;                      // Maximum value of the FFT
   std::vector<uint32_t> buffer;         // Buffer for LoRa symbol
   std::vector<gr_complex> d_dechirped;  // Dechirped samples
   std::vector<gr_complex> d_ref_downchirp;  // Downchirp reference signal
@@ -172,11 +173,14 @@ class lora_detector_impl : public lora_detector {
 
   int compare_peak(const gr_complex *in, gr_complex *out);
 
-  int detect_preamble(const gr_complex *in, gr_complex *out, uint32_t *n);
+  std::pair<float, uint32_t> dechirp(const gr_complex *in, bool is_up);
 
-  int detect_sfd(const gr_complex *in, gr_complex *out, uint32_t *n,
-                 gr_complex *down_blocks, gr_complex *up_blocks, float max,
-                 const gr_complex *in0);
+  int detect_preamble(const gr_complex *in, gr_complex *out);
+
+  int detect_sfd(const gr_complex *in, gr_complex *out, const gr_complex *in0);
+
+  int cfo_estimation(const gr_complex *in, gr_complex *out,
+                     const gr_complex *in0);
 
  public:
   lora_detector_impl(float threshold, uint8_t sf, uint32_t bw, uint32_t sr,
