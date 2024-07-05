@@ -6,7 +6,7 @@ workdir /lib
 run pacman -Syu --noconfirm
 
 # Install required dependencies
-run pacman -S git cppunit fftw boost boost-libs gnuradio gnuradio-osmosdr libvolk log4cpp base-devel cmake wxgtk3 gnuradio-companion pybind11 gtk4 gtk3  --noconfirm
+run pacman -S git cppunit fftw boost boost-libs gnuradio gnuradio-osmosdr libvolk log4cpp base-devel cmake wxgtk3 gnuradio-companion pybind11 gtk4 gtk3 inspectrum --noconfirm
 
 workdir /liquid
 
