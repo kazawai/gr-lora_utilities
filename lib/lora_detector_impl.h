@@ -175,12 +175,11 @@ class lora_detector_impl : public lora_detector {
 
   std::pair<float, uint32_t> dechirp(const gr_complex *in, bool is_up);
 
+  int instantaneous_frequency(const gr_complex *in, int n);
+
   int detect_preamble(const gr_complex *in, gr_complex *out);
 
   int detect_sfd(const gr_complex *in, gr_complex *out, const gr_complex *in0);
-
-  int cfo_estimation(const gr_complex *in, gr_complex *out,
-                     const gr_complex *in0);
 
  public:
   lora_detector_impl(float threshold, uint8_t sf, uint32_t bw, uint32_t sr,

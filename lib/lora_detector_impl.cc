@@ -22,11 +22,12 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <utility>
 
 namespace gr {
 namespace first_lora {
 
-#define DEMOD_HISTORY 7
+#define DEMOD_HISTORY (MIN_PREAMBLE_CHIRPS + 6)
 
 using input_type = gr_complex;
 using output_type = gr_complex;
@@ -294,6 +295,7 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out) {
     d_state = 2;
     // Move preamble peak to bin zero
     num_consumed = d_sn - 2 * buffer[0] / 10;
+    // detected = true;
     std::cout << "Buffer size: " << buffer.size() << std::endl;
     for (ulong i = 0; i < buffer.size(); i++) {
       std::cout << buffer[i] << std::endl;
@@ -306,8 +308,9 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out) {
 int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
                                    const gr_complex *in0) {
   int num_consumed = d_sn;
+  detected = false;
 
-  if (d_sfd_recovery++ > 10) {
+  if (d_sfd_recovery++ > 5) {
     d_state = 0;
     std::cout << "SFD recovery failed\n";
     return 0;
@@ -322,63 +325,20 @@ int lora_detector_impl::detect_sfd(const gr_complex *in, gr_complex *out,
 
   std::cout << "SFD detected\n";
   std::cout << "Up: " << up_val << " Down: " << down_val << std::endl;
-  detected = true;
+
+  num_consumed = round(1.25 * d_sn);
+
+  // detected = true;
   d_state = 3;
   return num_consumed;
 }
 
-int lora_detector_impl::cfo_estimation(const gr_complex *in, gr_complex *out,
-                                       const gr_complex *in0) {
-  int num_consumed = 0;
-
-  auto [pkd_val, pkd_idx] = dechirp(in, false);
-  std::cout << "Peak: " << pkd_val << " Index: " << pkd_idx << std::endl;
-
-  // Compute time offset (up-down alignment)
-  int time_offset = 0;
-
-  if (pkd_idx > d_bin_size / 2) {
-    int64_t diff =
-        static_cast<int64_t>(pkd_idx) - 1 - static_cast<int64_t>(d_bin_size);
-    if (diff < std::numeric_limits<int>::min() ||
-        diff > std::numeric_limits<int>::max()) {
-      // Handle overflow/underflow situation
-      std::cerr << "Error: Time offset calculation overflowed\n";
-      time_offset = 0;
-    } else {
-      time_offset = static_cast<int>(round(diff / 10.0));
-    }
-  } else {
-    time_offset = (int)round((pkd_idx - 1) / 10);
+int lora_detector_impl::instantaneous_frequency(const gr_complex *in, int n) {
+  float sum = 0;
+  for (int i = 0; i < n; i++) {
+    sum += std::arg(in[i]);
   }
-  std::cout << "Time offset: " << time_offset << std::endl;
-  in += time_offset;
-  const gr_complex *hist = in0 + time_offset - 4 * d_sn;
-  const gr_complex *data = in0 + time_offset - d_sn;
-
-  // Set preamble reference bin for CFO estimation
-  std::cout << "Setting CFO reference" << std::endl;
-  auto [pku_val, pku_idx] = dechirp(hist, true);
-  if (pku_idx > d_bin_size / 2) {
-    d_cfo = (float)(pku_idx - 1 - d_bin_size) * d_bw / d_bin_size;
-  } else {
-    d_cfo = (float)(pku_idx - 1) * d_bw / d_bin_size;
-  }
-  std::cout << "CFO: " << d_cfo << std::endl;
-
-  // Set the output to the start of data symbols (after SFD)
-  std::cout << "Setting output" << std::endl;
-  auto [pku_val2, pku_idx2] = dechirp(data, true);
-  auto [pkd_val2, pkd_idx2] = dechirp(data, false);
-  if (abs(pku_val2) > abs(pkd_val2)) {
-    num_consumed = time_offset + round(2.25 * d_sn);
-  } else {
-    num_consumed = time_offset + round(1.25 * d_sn);
-  }
-
-  detected = true;
-
-  return num_consumed;
+  return sum / n;
 }
 
 inline double realmod(float x, float y) {
@@ -441,12 +401,10 @@ int lora_detector_impl::general_work(int noutput_items,
         case 2:  // SFD
           // std::cout << "State 3\n";
           num_consumed = detect_sfd(in, out, in0);
-          if (detected) num_consumed = noutput_items;
           break;
-        case 3:  // CFO estimation
+        case 3:  // Signal output
           // std::cout << "State 4\n";
-          num_consumed = cfo_estimation(in, out, in0);
-          num_consumed = noutput_items;
+          // num_consumed = noutput_items;
           detected = true;
           d_state = 0;
           break;
@@ -465,10 +423,11 @@ int lora_detector_impl::general_work(int noutput_items,
 
   if (detected) {
     std::cout << "Detected\n";
-    // Copy all input symbols to output
-    memcpy(out, in0, noutput_items * sizeof(gr_complex));
+    // Signal should be centered around the peak of the preamble
+    // Copy the preamble to the output
+    memcpy(out, in0, (MIN_PREAMBLE_CHIRPS + 6) * d_sn * sizeof(gr_complex));
     consume_each(noutput_items);
-    return noutput_items;
+    return (MIN_PREAMBLE_CHIRPS + 6) * d_sn;
   } else {
     // If no peak is detected, we do not want to output anything
     memset(out, 0, noutput_items * sizeof(gr_complex));
