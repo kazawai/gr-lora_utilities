@@ -29,6 +29,8 @@ run git clone https://github.com/kazawai/gr-lora_utilities.git . && \
     make install && \
     ldconfig
 
+run echo "xterm_executable=/usr/bin/xterm" >> /etc/gnuradio/conf.d/grc.conf
+
 workdir /src/apps
 
 expose 40868
