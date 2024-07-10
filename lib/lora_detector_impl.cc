@@ -27,23 +27,23 @@
 namespace gr {
 namespace first_lora {
 
-#define DEMOD_HISTORY (MIN_PREAMBLE_CHIRPS + 6)
+#define DEMOD_HISTORY (MIN_PREAMBLE_CHIRPS + 5)
+
+int write_f_to_file(float *f, const char *filename, int n);
 
 using input_type = gr_complex;
 using output_type = gr_complex;
 lora_detector::sptr lora_detector::make(float threshold, uint8_t sf,
-                                        uint32_t bw, uint32_t sr, int method,
-                                        int write_refchirp_to_file) {
-  return gnuradio::make_block_sptr<lora_detector_impl>(
-      threshold, sf, bw, sr, method, write_refchirp_to_file);
+                                        uint32_t bw, int method) {
+  return gnuradio::make_block_sptr<lora_detector_impl>(threshold, sf, bw,
+                                                       method);
 }
 
 /*
  * The private constructor
  */
 lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
-                                       uint32_t sr, int method,
-                                       int write_refchirp_to_file)
+                                       int method)
     : gr::block("lora_detector",
                 gr::io_signature::make(1 /* min inputs */, 1 /* max inputs */,
                                        sizeof(input_type)),
@@ -52,9 +52,7 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
       d_threshold(threshold),
       d_sf(sf),
       d_bw(bw),
-      d_sr(sr),
-      d_method(method),
-      d_write_refchirp_to_file(write_refchirp_to_file) {
+      d_method(method) {
   assert((d_sf > 5) && (d_sf < 13));
 
   // Number of symbols
@@ -64,22 +62,28 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
   std::cout << "Samples: " << d_sn << std::endl;
 
   d_fs = d_bw * 2;
-  d_sr = sr;
   d_fft_size = 10 * d_sn;
   d_bin_size = 10 * d_sps;
   d_cfo = 0;
   d_max_val = 0;
   // FFT input vector
   d_mult_hf_fft = std::vector<gr_complex>(d_fft_size);
+  d_fft_result = (lv_32fc_t *)malloc(d_fft_size * sizeof(lv_32fc_t));
+  if (d_fft_result == NULL) {
+    std::cerr << "Error: Failed to allocate memory for fft_result\n";
+    return;
+  }
+
+  b2 = (float *)volk_malloc(d_bin_size * sizeof(float), volk_get_alignment());
+  if (b2 == NULL) {
+    std::cerr << "Error: Failed to allocate memory for b2\n";
+    return;
+  }
 
   // Reference downchip signal
   d_ref_downchirp = g_downchirp(d_sf, d_bw, d_fs);
   // Reference upchip signal
   d_ref_upchirp = g_upchirp(d_sf, d_bw, d_fs);
-
-  if (d_write_refchirp_to_file) {
-    write_chirp_to_file(d_ref_downchirp, "/tmp/refchirp.dat");
-  }
 
   d_dechirped.reserve(d_sn);
 
@@ -94,6 +98,12 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
 lora_detector_impl::~lora_detector_impl() {
   // Free memory
   buffer.clear();
+  free(d_fft_result);
+  volk_free(b2);
+
+  // Print the number of detected LoRa symbols
+  std::cout << "Detected LoRa symbols: " << detected_count << std::endl;
+  detected_count = 0;
 }
 
 void lora_detector_impl::forecast(int noutput_items,
@@ -223,6 +233,41 @@ int write_symbol_to_file(const std::vector<gr_complex> &symbol,
   return 0;
 }
 
+int write_fft_result_to_file(const lv_32fc_t *fft_result, const char *filename,
+                             int n) {
+  std::cout << "Writing fft result to file\n";
+  FILE *file = fopen(filename, "w");
+  if (file == NULL) {
+    std::cerr << "Error: Failed to open file\n";
+    return -1;
+  }
+
+  for (int i = 0; i < n; i++) {
+    fprintf(file, "%f %f\n", fft_result[i].real(), fft_result[i].imag());
+  }
+
+  fclose(file);
+  std::cout << "FFT result written to file\n";
+  return 0;
+}
+
+int write_f_to_file(float *f, const char *filename, int n) {
+  std::cout << "Writing f to file\n";
+  FILE *file = fopen(filename, "w");
+  if (file == NULL) {
+    std::cerr << "Error: Failed to open file\n";
+    return -1;
+  }
+
+  for (int i = 0; i < n; i++) {
+    fprintf(file, "%f\n", f[i]);
+  }
+
+  fclose(file);
+  std::cout << "f written to file\n";
+  return 0;
+}
+
 std::pair<float, uint32_t> lora_detector_impl::dechirp(const gr_complex *in,
                                                        bool is_up) {
   gr_complex *blocks = (gr_complex *)volk_malloc(
@@ -237,17 +282,17 @@ std::pair<float, uint32_t> lora_detector_impl::dechirp(const gr_complex *in,
       blocks, in, is_up ? &d_ref_downchirp[0] : &d_ref_upchirp[0], d_sn);
 
   // Buffer for FFT
-  lv_32fc_t *fft_r = (lv_32fc_t *)malloc(d_fft_size * sizeof(lv_32fc_t));
-  if (fft_r == NULL) {
-    std::cerr << "Error: Failed to allocate memory for fft_r\n";
-    return std::make_pair(0, 0);
-  }
+  // lv_32fc_t *fft_r = (lv_32fc_t *)malloc(d_fft_size * sizeof(lv_32fc_t));
+  // if (fft_r == NULL) {
+  //   std::cerr << "Error: Failed to allocate memory for fft_r\n";
+  //   return std::make_pair(0, 0);
+  // }
 
   // Copy dechirped signal to d_mult_hf_fft (zero padding)
   memset(&d_mult_hf_fft[0], 0, d_fft_size * sizeof(gr_complex));
   memcpy(&d_mult_hf_fft[0], blocks, d_sn * sizeof(gr_complex));
 
-  fft = fft_create_plan(d_fft_size, &d_mult_hf_fft[0], fft_r,
+  fft = fft_create_plan(d_fft_size, &d_mult_hf_fft[0], d_fft_result,
                         LIQUID_FFT_FORWARD, 0);
 
   // FFT
@@ -262,20 +307,20 @@ std::pair<float, uint32_t> lora_detector_impl::dechirp(const gr_complex *in,
   // Get peak of FFT
   float *b1 =
       (float *)volk_malloc(d_fft_size * sizeof(float), volk_get_alignment());
-  float *b2 =
-      (float *)volk_malloc(d_bin_size * sizeof(float), volk_get_alignment());
+  // float *b2 =
+  //     (float *)volk_malloc(d_bin_size * sizeof(float), volk_get_alignment());
 
   if (b1 == NULL || b2 == NULL) {
     std::cerr << "Error: Failed to allocate memory for b1 or b2\n";
     return std::make_pair(0, 0);
   }
   float max;
-  uint32_t peak = get_fft_peak_abs(fft_r, b1, b2, &max);
+  uint32_t peak = get_fft_peak_abs(d_fft_result, b1, b2, &max);
 
   // Free memory
-  free(fft_r);
+  // free(fft_r);
   volk_free(b1);
-  volk_free(b2);
+  // volk_free(b2);
 
   return std::make_pair(max, peak);
 }
@@ -396,6 +441,12 @@ int lora_detector_impl::general_work(int noutput_items,
         case 1:  // Preamble
           // std::cout << "State 2\n";
           num_consumed = detect_preamble(in, out);
+          if (num_consumed != d_sn) {
+            // Write the new buffer to a file
+            // write_f_to_file(b2,
+            //                 "/home/kazawai/dev/python/LoRa/LoRa/files/b2.txt",
+            //                 d_bin_size);
+          }
           d_max_val = up_val;
           break;
         case 2:  // SFD
@@ -416,21 +467,44 @@ int lora_detector_impl::general_work(int noutput_items,
       num_consumed = noutput_items;
       break;
     }
+    case 2: {  // DEBUG
+      // Dechirp
+      gr_complex *blocks = (gr_complex *)volk_malloc(
+          d_fft_size * sizeof(gr_complex), volk_get_alignment());
+      if (blocks == NULL) {
+        std::cerr << "Error: Failed to allocate memory for up_blocks\n";
+        return -1;
+      }
+
+      // Dechirp https://dl.acm.org/doi/10.1145/3546869#d1e1181
+      volk_32fc_x2_multiply_32fc(blocks, in, &d_ref_upchirp[0], d_sn);
+
+      // Return the dechirped signal
+      memcpy(out, blocks, d_sn * sizeof(gr_complex));
+      num_consumed = d_sn;
+      consume_each(num_consumed);
+      return num_consumed;
+
+      break;
+    }
     default:
       std::cerr << "Error: Invalid method\n";
       return -1;
   }
 
+  // Reset output buffer
+  memset(out, 0, noutput_items * sizeof(gr_complex));
+
   if (detected) {
     std::cout << "Detected\n";
+    detected_count++;
     // Signal should be centered around the peak of the preamble
     // Copy the preamble to the output
-    memcpy(out, in0, (MIN_PREAMBLE_CHIRPS + 6) * d_sn * sizeof(gr_complex));
+    memcpy(out, in0, (MIN_PREAMBLE_CHIRPS + 5) * d_sn * sizeof(gr_complex));
     consume_each(noutput_items);
-    return (MIN_PREAMBLE_CHIRPS + 6) * d_sn;
+    return (MIN_PREAMBLE_CHIRPS + 5) * d_sn;
   } else {
     // If no peak is detected, we do not want to output anything
-    memset(out, 0, noutput_items * sizeof(gr_complex));
     consume_each(num_consumed);
     return 0;
   }

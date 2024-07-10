@@ -3,7 +3,7 @@ label: lora detector
 category: '[First_lora]'
 templates:
   imports: 'from gnuradio import first_lora'
-  make: 'first_lora.lora_detector(${threshold}, ${sf}, ${bw}, ${sr}, ${method})'
+  make: 'first_lora.lora_detector(${threshold}, ${sf}, ${bw}, ${method})'
 parameters:
 - id: threshold
   label: Threshold
@@ -17,18 +17,11 @@ parameters:
   label: Bw
   default: ' 125000'
   dtype: float
-- id: sr
-  label: Sr
-  default: ' 500000'
-  dtype: float
 - id: method
-  label: Method (0 or 1)
-  default: '0'
-  dtype: int
-- id: write_refchirp_to_file
-  label: Write ref chirp to file
-  default: '1'
-  dtype: int
+  label: Method
+  dtype: enum
+  options: ['0', '1', '2']
+  option_labels: [Threshold, Sync, Debug]
 inputs:
 - label: in
   domain: stream
