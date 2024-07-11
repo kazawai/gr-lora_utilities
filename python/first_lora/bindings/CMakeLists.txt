@@ -26,7 +26,8 @@ include(GrPybind)
 
 list(APPEND first_lora_python_files
     mysquare_python.cc
-    lora_detector_python.cc python_bindings.cc)
+    lora_detector_python.cc
+    file_writer_python.cc python_bindings.cc)
 
 gr_pybind_make_oot(first_lora ../../.. gr::first_lora "${first_lora_python_files}")
 

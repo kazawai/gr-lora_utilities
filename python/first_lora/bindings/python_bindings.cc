@@ -23,6 +23,7 @@ namespace py = pybind11;
 // BINDING_FUNCTION_PROTOTYPES(
     void bind_mysquare(py::module& m);
     void bind_lora_detector(py::module& m);
+    void bind_file_writer(py::module& m);
 // ) END BINDING_FUNCTION_PROTOTYPES
 
 
@@ -53,5 +54,6 @@ PYBIND11_MODULE(first_lora_python, m)
     // BINDING_FUNCTION_CALLS(
     bind_mysquare(m);
     bind_lora_detector(m);
+    bind_file_writer(m);
     // ) END BINDING_FUNCTION_CALLS
 }

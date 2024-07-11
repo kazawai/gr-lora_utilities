@@ -1,5 +1,5 @@
 id: first_lora_lora_detector
-label: lora detector
+label: LoRa Detector
 category: '[First_lora]'
 templates:
   imports: 'from gnuradio import first_lora'

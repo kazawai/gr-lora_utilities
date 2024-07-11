@@ -18,8 +18,8 @@
 #include <cstdint>
 #include <vector>
 
-#define MIN_PREAMBLE_CHIRPS 8
-#define MAX_DISTANCE 5
+#define MIN_PREAMBLE_CHIRPS 6
+#define MAX_DISTANCE 10
 
 namespace gr {
 namespace first_lora {

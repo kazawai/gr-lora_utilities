@@ -27,7 +27,7 @@
 namespace gr {
 namespace first_lora {
 
-#define DEMOD_HISTORY (MIN_PREAMBLE_CHIRPS + 5)
+#define DEMOD_HISTORY (8 + 5)
 
 int write_f_to_file(float *f, const char *filename, int n);
 
@@ -333,6 +333,13 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out) {
     return num_consumed;
   } else {
     preamble_detected = true;
+    if (detected_count == 7) {
+      // Print the buffer
+      std::cout << "Buffer size: " << buffer.size() << std::endl;
+      for (ulong i = 0; i < buffer.size(); i++) {
+        std::cout << buffer[i] << std::endl;
+      }
+    }
   }
 
   if (preamble_detected) {
@@ -386,8 +393,11 @@ int lora_detector_impl::instantaneous_frequency(const gr_complex *in, int n) {
   return sum / n;
 }
 
-inline double realmod(float x, float y) {
+float realmod(float x, float y, bool print = false) {
   float result = fmod(x, y);
+  if (print) {
+    std::cout << "Realmod: " << x << " % " << y << " = " << result << std::endl;
+  }
   return result >= 0 ? result : result + y;
 }
 
@@ -413,9 +423,16 @@ int lora_detector_impl::general_work(int noutput_items,
       auto [up_val, up_idx] = dechirp(in, true);
       d_max_val = up_val;
       if (!buffer.empty()) {
-        float distance = realmod(up_idx - buffer[0], d_bin_size);
+        float num = (float)up_idx - (float)buffer[0];
+        float distance =
+            realmod(num, d_bin_size, (up_idx == 516 && buffer[0] == 789));
         if (distance > (float)d_bin_size / 2) {
           distance = d_bin_size - distance;
+        }
+        if (up_idx == 516 && buffer[0] == 789) {
+          std::cout << "Distance: " << distance << std::endl;
+          std::cout << "Buffer will become: " << buffer[0] << ", " << up_idx
+                    << std::endl;
         }
         if (distance <= MAX_DISTANCE) {
           buffer.insert(buffer.begin(), up_idx);
@@ -477,7 +494,7 @@ int lora_detector_impl::general_work(int noutput_items,
       }
 
       // Dechirp https://dl.acm.org/doi/10.1145/3546869#d1e1181
-      volk_32fc_x2_multiply_32fc(blocks, in, &d_ref_upchirp[0], d_sn);
+      volk_32fc_x2_multiply_32fc(blocks, in, &d_ref_downchirp[0], d_sn);
 
       // Return the dechirped signal
       memcpy(out, blocks, d_sn * sizeof(gr_complex));
@@ -500,9 +517,9 @@ int lora_detector_impl::general_work(int noutput_items,
     detected_count++;
     // Signal should be centered around the peak of the preamble
     // Copy the preamble to the output
-    memcpy(out, in0, (MIN_PREAMBLE_CHIRPS + 5) * d_sn * sizeof(gr_complex));
+    memcpy(out, in0, (8 + 5) * d_sn * sizeof(gr_complex));
     consume_each(noutput_items);
-    return (MIN_PREAMBLE_CHIRPS + 5) * d_sn;
+    return (8 + 5) * d_sn;
   } else {
     // If no peak is detected, we do not want to output anything
     consume_each(num_consumed);

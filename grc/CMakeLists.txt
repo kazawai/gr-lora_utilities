@@ -8,4 +8,5 @@
 
 install(FILES
     first_lora_mysquare.block.yml
-    first_lora_lora_detector.block.yml DESTINATION share/gnuradio/grc/blocks)
+    first_lora_lora_detector.block.yml
+    first_lora_file_writer.block.yml DESTINATION share/gnuradio/grc/blocks)
