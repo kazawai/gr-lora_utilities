@@ -1051,3 +1051,6 @@ dkms.conf
 .clang-format
 .clang-format.*
 .cmake-format.*
+
+# Python virtual environment
+.venv/
