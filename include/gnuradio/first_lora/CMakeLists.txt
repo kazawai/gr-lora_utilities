@@ -12,4 +12,4 @@
 install(FILES api.h
     mysquare.h
     lora_detector.h
-    file_writer.h DESTINATION include/gnuradio/first_lora)
+    DESTINATION include/gnuradio/first_lora)

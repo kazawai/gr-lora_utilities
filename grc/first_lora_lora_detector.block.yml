@@ -32,4 +32,8 @@ outputs:
   domain: stream
   dtype: complex
   multiplicity: 1
+- label: detected
+  id: detected
+  domain: message
+  optional: 1
 file_format: 1

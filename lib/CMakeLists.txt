@@ -10,11 +10,10 @@
 # Setup library
 ########################################################################
 include(GrPlatform) #define LIB_SUFFIX
-
 list(APPEND first_lora_sources
     mysquare_impl.cc
     lora_detector_impl.cc
-    file_writer_impl.cc)
+    )
 
 set(first_lora_sources
     "${first_lora_sources}"

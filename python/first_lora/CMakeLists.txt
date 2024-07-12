@@ -19,7 +19,9 @@ add_subdirectory(bindings)
 ########################################################################
 # Install python sources
 ########################################################################
-gr_python_install(FILES __init__.py DESTINATION ${GR_PYTHON_DIR}/gnuradio/first_lora)
+gr_python_install(FILES __init__.py
+    file_writer.py
+    DESTINATION ${GR_PYTHON_DIR}/gnuradio/first_lora)
 
 ########################################################################
 # Handle the unit tests

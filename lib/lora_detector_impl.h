@@ -12,6 +12,7 @@
 #include <gnuradio/first_lora/lora_detector.h>
 #include <gnuradio/gr_complex.h>
 #include <liquid/liquid.h>
+#include <pmt/pmt.h>
 #include <volk/volk_complex.h>
 
 #include <complex>
@@ -24,33 +25,35 @@
 namespace gr {
 namespace first_lora {
 
-static int detected_count = 0;  // Number of detected LoRa symbols
+static int detected_count = 0; // Number of detected LoRa symbols
+
+static const pmt::pmt_t d_pmt_detected = pmt::intern("detected");
 
 class lora_detector_impl : public lora_detector {
- private:
-  float d_threshold;                    // Threshold for detecting LoRa signal
-  uint8_t d_sf;                         // Spreading factor
-  uint32_t d_bw;                        // Bandwidth
-  uint32_t d_fs;                        // Sampling rate
-  int d_method;                         // Method used
-  int d_prev_detected = 0;              // Previous detected LoRa symbols
-  uint32_t d_sps;                       // Samples per symbol (2^sf)
-  uint32_t d_sn;                        // Number of samples
-  float d_cfo;                          // Carrier frequency offset
-  float d_max_val;                      // Maximum value of the FFT
-  std::vector<uint32_t> buffer;         // Buffer for LoRa symbol
-  std::vector<gr_complex> d_dechirped;  // Dechirped samples
-  std::vector<gr_complex> d_ref_downchirp;  // Downchirp reference signal
-  std::vector<gr_complex> d_ref_upchirp;    // Upchirp reference signal
-  uint16_t d_fft_size;                      // FFT size
-  uint16_t d_bin_size;                      // Bin size (d_fft_size / 2)
-  fftplan fft;                              // FFT plan
-  std::vector<gr_complex> d_mult_hf_fft;    // FFT result
-  int d_sfd_recovery = 0;                   // SFD recovery count
-  bool detected = false;                    // Detected LoRa signal
-  int d_state = 0;                          // State of the detector
-  lv_32fc_t *d_fft_result;                  // FFT result
-  float *b2;                                // Buffer 2
+private:
+  float d_threshold;                   // Threshold for detecting LoRa signal
+  uint8_t d_sf;                        // Spreading factor
+  uint32_t d_bw;                       // Bandwidth
+  uint32_t d_fs;                       // Sampling rate
+  int d_method;                        // Method used
+  int d_prev_detected = 0;             // Previous detected LoRa symbols
+  uint32_t d_sps;                      // Samples per symbol (2^sf)
+  uint32_t d_sn;                       // Number of samples
+  float d_cfo;                         // Carrier frequency offset
+  float d_max_val;                     // Maximum value of the FFT
+  std::vector<uint32_t> buffer;        // Buffer for LoRa symbol
+  std::vector<gr_complex> d_dechirped; // Dechirped samples
+  std::vector<gr_complex> d_ref_downchirp; // Downchirp reference signal
+  std::vector<gr_complex> d_ref_upchirp;   // Upchirp reference signal
+  uint16_t d_fft_size;                     // FFT size
+  uint16_t d_bin_size;                     // Bin size (d_fft_size / 2)
+  fftplan fft;                             // FFT plan
+  std::vector<gr_complex> d_mult_hf_fft;   // FFT result
+  int d_sfd_recovery = 0;                  // SFD recovery count
+  bool detected = false;                   // Detected LoRa signal
+  int d_state = 0;                         // State of the detector
+  lv_32fc_t *d_fft_result;                 // FFT result
+  float *b2;                               // Buffer 2
   /**
    * @brief Generate chirp signal
    * chirp(t;f_0) = A(t)exp(j2π(f_0 + (B/2T)t)t) (where A(t) is the amplitude
@@ -182,7 +185,9 @@ class lora_detector_impl : public lora_detector {
 
   int detect_sfd(const gr_complex *in, gr_complex *out, const gr_complex *in0);
 
- public:
+  void on_detected_message(pmt::pmt_t msg);
+
+public:
   lora_detector_impl(float threshold, uint8_t sf, uint32_t bw, int method);
   ~lora_detector_impl();
 
@@ -194,7 +199,7 @@ class lora_detector_impl : public lora_detector {
                    gr_vector_void_star &output_items);
 };
 
-}  // namespace first_lora
-}  // namespace gr
+} // namespace first_lora
+} // namespace gr
 
 #endif /* INCLUDED_FIRST_LORA_LORA_DETECTOR_IMPL_H */

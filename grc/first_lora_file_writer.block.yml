@@ -1,0 +1,87 @@
+id: first_lora_file_writer
+label: File Writer
+category: '[First_lora]'
+
+templates:
+  imports: from gnuradio import first_lora
+  make: first_lora.file_writer(filename=${filename}, author=${author}, description=${description}, item_size=${item_type.size}, item_type=${item_type.complex}, sample_rate=${sample_rate}, frequency=${frequency}, hw=${hw}, version=${version}, is_loopback=${loopback})
+
+#  Make one 'parameters' list entry for every parameter you want settable from the GUI.
+#     Keys include:
+#     * id (makes the value accessible as keyname, e.g. in the make entry)
+#     * label (label shown in the GUI)
+#     * dtype (e.g. int, float, complex, byte, short, xxx_vector, ...)
+#     * default
+parameters:
+- id: filename
+  label: File Name
+  dtype: file_save 
+-   id: item_type
+    label: Stream data Type
+    dtype: enum
+    options: [complex float (fc32_le), real float (rc32_le), complex short (sc16_le), real short (rc16_le)]
+    option_attributes:
+        type: [complex, float, short, short]
+        size: [gr.sizeof_gr_complex, gr.sizeof_float, gr.sizeof_short, gr.sizeof_short]
+        complex: [True, False, True, False]
+    hide: part
+-   id: sample_rate
+    label: Sample Rate
+    dtype: float
+    default: samp_rate
+-   id: frequency
+    label: Center Frequency
+    dtype: float
+    default: 868e6
+-   id: author
+    label: Author
+    dtype: string
+    default: ''
+-   id: description
+    label: Description
+    dtype: string
+    default: ''
+-   id: hw
+    label: Hardware Info
+    dtype: string
+    default: ''
+-   id: version
+    label: Version
+    dtype: string
+    default: '0.0.1'
+-   id: loopback
+    label: Auto loop devices
+    dtype: bool
+    default: False
+-   id: ip_address
+    label: IP Address (if Auto Loop)
+    dtype: string
+    default: 'localhost'
+-   id: port
+    label: Port (if Auto Loop)
+    dtype: int
+    default: 12345
+#- id: ...
+#  label: ...
+#  dtype: ...
+
+#  Make one 'inputs' list entry per input and one 'outputs' list entry per output.
+#  Keys include:
+#      * label (an identifier for the GUI)
+#      * domain (optional - stream or message. Default is stream)
+#      * dtype (e.g. int, float, complex, byte, short, xxx_vector, ...)
+#      * vlen (optional - data stream vector length. Default is 1)
+#      * optional (optional - set to 1 for optional inputs. Default is 0)
+inputs:
+- label: in
+  domain: stream
+  dtype: complex
+  vlen: 1
+- label: detected
+  id: detected
+  domain: message
+  optional: 1
+
+#  'file_format' specifies the version of the GRC yml format used in the file
+#  and should usually not be changed.
+file_format: 1

@@ -11,6 +11,7 @@
 #include <gnuradio/io_signature.h>
 #include <gnuradio/types.h>
 #include <liquid/liquid.h>
+#include <pmt/pmt.h>
 #include <sys/types.h>
 #include <volk/volk.h>
 #include <volk/volk_complex.h>
@@ -49,10 +50,7 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
                                        sizeof(input_type)),
                 gr::io_signature::make(1 /* min outputs */, 1 /*max outputs */,
                                        sizeof(output_type))),
-      d_threshold(threshold),
-      d_sf(sf),
-      d_bw(bw),
-      d_method(method) {
+      d_threshold(threshold), d_sf(sf), d_bw(bw), d_method(method) {
   assert((d_sf > 5) && (d_sf < 13));
 
   // Number of symbols
@@ -88,6 +86,8 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
   d_dechirped.reserve(d_sn);
 
   d_state = 0;
+
+  message_port_register_out(pmt::mp("detected"));
 
   set_history(DEMOD_HISTORY * d_sn);
 }
@@ -406,9 +406,9 @@ int lora_detector_impl::general_work(int noutput_items,
                                      gr_vector_const_void_star &input_items,
                                      gr_vector_void_star &output_items) {
   if (ninput_items[0] < (int)(DEMOD_HISTORY * d_sn))
-    return 0;  // Not enough input
+    return 0; // Not enough input
   auto in0 = static_cast<const input_type *>(input_items[0]);
-  auto in = &in0[d_sn * (DEMOD_HISTORY - 1)];  // Get the last lora symbol
+  auto in = &in0[d_sn * (DEMOD_HISTORY - 1)]; // Get the last lora symbol
   auto out = static_cast<output_type *>(output_items[0]);
   uint32_t num_consumed = d_sn;
 
@@ -418,95 +418,95 @@ int lora_detector_impl::general_work(int noutput_items,
   // return noutput_items;
 
   switch (d_method) {
-    case 1: {
-      // Dechirp
-      auto [up_val, up_idx] = dechirp(in, true);
-      d_max_val = up_val;
-      if (!buffer.empty()) {
-        float num = (float)up_idx - (float)buffer[0];
-        float distance =
-            realmod(num, d_bin_size, (up_idx == 516 && buffer[0] == 789));
-        if (distance > (float)d_bin_size / 2) {
-          distance = d_bin_size - distance;
-        }
-        if (up_idx == 516 && buffer[0] == 789) {
-          std::cout << "Distance: " << distance << std::endl;
-          std::cout << "Buffer will become: " << buffer[0] << ", " << up_idx
-                    << std::endl;
-        }
-        if (distance <= MAX_DISTANCE) {
-          buffer.insert(buffer.begin(), up_idx);
-        } else {
-          buffer.clear();
-          buffer.insert(buffer.begin(), up_idx);
-        }
+  case 1: {
+    // Dechirp
+    auto [up_val, up_idx] = dechirp(in, true);
+    d_max_val = up_val;
+    if (!buffer.empty()) {
+      float num = (float)up_idx - (float)buffer[0];
+      float distance =
+          realmod(num, d_bin_size, (up_idx == 516 && buffer[0] == 789));
+      if (distance > (float)d_bin_size / 2) {
+        distance = d_bin_size - distance;
+      }
+      if (up_idx == 516 && buffer[0] == 789) {
+        std::cout << "Distance: " << distance << std::endl;
+        std::cout << "Buffer will become: " << buffer[0] << ", " << up_idx
+                  << std::endl;
+      }
+      if (distance <= MAX_DISTANCE) {
+        buffer.insert(buffer.begin(), up_idx);
       } else {
+        buffer.clear();
         buffer.insert(buffer.begin(), up_idx);
       }
-      // std::cout << "\n--------------\nPeak: " << peak << " Max: " << max
-      //           << "\n--------------\n"
-      //           << std::endl;
+    } else {
+      buffer.insert(buffer.begin(), up_idx);
+    }
+    // std::cout << "\n--------------\nPeak: " << peak << " Max: " << max
+    //           << "\n--------------\n"
+    //           << std::endl;
 
-      switch (d_state) {
-        case 0:  // Reset state
-          detected = false;
-          buffer.clear();
-          d_sfd_recovery = 0;
-          d_state = 1;
-          // std::cout << "State 0\n";
-          break;
-        case 1:  // Preamble
-          // std::cout << "State 2\n";
-          num_consumed = detect_preamble(in, out);
-          if (num_consumed != d_sn) {
-            // Write the new buffer to a file
-            // write_f_to_file(b2,
-            //                 "/home/kazawai/dev/python/LoRa/LoRa/files/b2.txt",
-            //                 d_bin_size);
-          }
-          d_max_val = up_val;
-          break;
-        case 2:  // SFD
-          // std::cout << "State 3\n";
-          num_consumed = detect_sfd(in, out, in0);
-          break;
-        case 3:  // Signal output
-          // std::cout << "State 4\n";
-          // num_consumed = noutput_items;
-          detected = true;
-          d_state = 0;
-          break;
+    switch (d_state) {
+    case 0: // Reset state
+      detected = false;
+      buffer.clear();
+      d_sfd_recovery = 0;
+      d_state = 1;
+      // std::cout << "State 0\n";
+      break;
+    case 1: // Preamble
+      // std::cout << "State 2\n";
+      num_consumed = detect_preamble(in, out);
+      if (num_consumed != d_sn) {
+        // Write the new buffer to a file
+        // write_f_to_file(b2,
+        //                 "/home/kazawai/dev/python/LoRa/LoRa/files/b2.txt",
+        //                 d_bin_size);
       }
+      d_max_val = up_val;
+      break;
+    case 2: // SFD
+      // std::cout << "State 3\n";
+      num_consumed = detect_sfd(in, out, in0);
+      break;
+    case 3: // Signal output
+      // std::cout << "State 4\n";
+      // num_consumed = noutput_items;
+      detected = true;
+      d_state = 0;
       break;
     }
-    case 0: {
-      detected = compare_peak(in, out);
-      num_consumed = noutput_items;
-      break;
-    }
-    case 2: {  // DEBUG
-      // Dechirp
-      gr_complex *blocks = (gr_complex *)volk_malloc(
-          d_fft_size * sizeof(gr_complex), volk_get_alignment());
-      if (blocks == NULL) {
-        std::cerr << "Error: Failed to allocate memory for up_blocks\n";
-        return -1;
-      }
-
-      // Dechirp https://dl.acm.org/doi/10.1145/3546869#d1e1181
-      volk_32fc_x2_multiply_32fc(blocks, in, &d_ref_downchirp[0], d_sn);
-
-      // Return the dechirped signal
-      memcpy(out, blocks, d_sn * sizeof(gr_complex));
-      num_consumed = d_sn;
-      consume_each(num_consumed);
-      return num_consumed;
-
-      break;
-    }
-    default:
-      std::cerr << "Error: Invalid method\n";
+    break;
+  }
+  case 0: {
+    detected = compare_peak(in, out);
+    num_consumed = noutput_items;
+    break;
+  }
+  case 2: { // DEBUG
+    // Dechirp
+    gr_complex *blocks = (gr_complex *)volk_malloc(
+        d_fft_size * sizeof(gr_complex), volk_get_alignment());
+    if (blocks == NULL) {
+      std::cerr << "Error: Failed to allocate memory for up_blocks\n";
       return -1;
+    }
+
+    // Dechirp https://dl.acm.org/doi/10.1145/3546869#d1e1181
+    volk_32fc_x2_multiply_32fc(blocks, in, &d_ref_downchirp[0], d_sn);
+
+    // Return the dechirped signal
+    memcpy(out, blocks, d_sn * sizeof(gr_complex));
+    num_consumed = d_sn;
+    consume_each(num_consumed);
+    return num_consumed;
+
+    break;
+  }
+  default:
+    std::cerr << "Error: Invalid method\n";
+    return -1;
   }
 
   // Reset output buffer
@@ -518,6 +518,10 @@ int lora_detector_impl::general_work(int noutput_items,
     // Signal should be centered around the peak of the preamble
     // Copy the preamble to the output
     memcpy(out, in0, (8 + 5) * d_sn * sizeof(gr_complex));
+
+    // Send "detected" message
+    message_port_pub(pmt::mp("detected"), pmt::from_bool(true));
+
     consume_each(noutput_items);
     return (8 + 5) * d_sn;
   } else {
