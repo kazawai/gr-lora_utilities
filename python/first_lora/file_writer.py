@@ -62,6 +62,7 @@ class file_writer(gr.sync_block):
         self.version = version
         self.is_loopback = is_loopback
         self.new_symol = True
+        self.total_symbols = 0
 
         self.ip_address = ip_address
         self.port = port
@@ -85,8 +86,9 @@ class file_writer(gr.sync_block):
         if self.is_loopback:
             print("Connecting to socket")
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.bind((self.ip_address, self.port))
-            self.sock.listen(1)
+            self.host = socket.gethostname()
+            self.sock.bind((self.host, self.port))
+            self.sock.listen(5)
             self.conn, self.addr = self.sock.accept()
             self.conn.setblocking(False)
             print("Connected to socket")
@@ -121,6 +123,19 @@ class file_writer(gr.sync_block):
         if self.device_id != device_id:
             print(f"Device id changed from {self.device_id} to {device_id}")
             if self.device_id != 0:
+                # Add the total number of symbols to the metadata
+                self.meta.set_global_info(
+                    {
+                        SigMFFile.DATATYPE_KEY: self.datatype,
+                        SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
+                        SigMFFile.DESCRIPTION_KEY: self.description,
+                        SigMFFile.AUTHOR_KEY: self.author,
+                        SigMFFile.DATASET_KEY: f"{self.filename}.sigmf-data",
+                        SigMFFile.HW_KEY: self.hw,
+                        SigMFFile.VERSION_KEY: self.version,
+                        SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
+                    }
+                )
                 self.meta.tofile(self.filename + ".sigmf-meta")
                 self.meta = SigMFFile()
             self.device_id = device_id
@@ -132,22 +147,9 @@ class file_writer(gr.sync_block):
         if os.path.exists(self.filename + ".sigmf-data"):
             self.filename = f"{self.filename}_{int(time.time())}"
 
-        print(f"Updating metadata for device {self.device_id}")
-        self.meta.set_global_info(
-            {
-                SigMFFile.DATATYPE_KEY: self.datatype,
-                SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
-                SigMFFile.DESCRIPTION_KEY: self.description,
-                SigMFFile.AUTHOR_KEY: self.author,
-                SigMFFile.DATASET_KEY: f"{self.filename}.sigmf-data",
-                SigMFFile.HW_KEY: self.hw,
-                SigMFFile.VERSION_KEY: self.version,
-            }
-        )
-
-    def add_capture(self, index, metadata):
-        print(f"Adding capture at index {index}")
-        self.meta.add_capture(index, metadata)
+    def add_annotation(self, index, metadata, count=(256 * 13 * 4)):
+        print(f"Adding annotation at index {index}")
+        self.meta.add_annotation(index, count, metadata)
 
     def handle_msg(self, msg):
         print(f"Received message: {pmt.to_python(msg)}")
@@ -160,6 +162,19 @@ class file_writer(gr.sync_block):
                 device_id = self.conn.recv(1024).decode("utf-8")
                 if device_id == "close":
                     print("Closing connection")
+                    self.meta.set_global_info(
+                        {
+                            SigMFFile.DATATYPE_KEY: self.datatype,
+                            SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
+                            SigMFFile.DESCRIPTION_KEY: self.description,
+                            SigMFFile.AUTHOR_KEY: self.author,
+                            SigMFFile.DATASET_KEY: f"{self.filename}.sigmf-data",
+                            SigMFFile.HW_KEY: self.hw,
+                            SigMFFile.VERSION_KEY: self.version,
+                            SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
+                        }
+                    )
+
                     self.meta.tofile(self.filename + ".sigmf-meta")
                     self.conn.close()
                     # Stop the execution
@@ -175,12 +190,14 @@ class file_writer(gr.sync_block):
         else:  # Write to file
             print(f"Writing {len(input_items[0])} items to file")
             if self.new_symol:
-                self.add_capture(
+                self.total_symbols += 1
+                self.add_annotation(
                     self.nitems_written,
                     {
-                        SigMFFile.CAPTURE_KEY: {
+                        SigMFFile.ANNOTATION_KEY: {
                             SigMFFile.FREQUENCY_KEY: self.frequency,
                             SigMFFile.DATETIME_KEY: dt.datetime.now().isoformat() + "Z",
+                            SigMFFile.COMMENT_KEY: f"LoRa Symbol {self.total_symbols}",
                         }
                     },
                 )
