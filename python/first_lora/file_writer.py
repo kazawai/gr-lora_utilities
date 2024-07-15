@@ -52,6 +52,7 @@ class file_writer(gr.sync_block):
         print("Message port registered")
 
         self.filename = filename
+        self.cur_filename = filename
         self.author = author
         self.description = description
         self.item_size = item_size
@@ -97,7 +98,7 @@ class file_writer(gr.sync_block):
                 device_id = self.conn.recv(1024).decode("utf-8")
                 if device_id == "close":
                     print("Closing connection")
-                    self.meta.tofile(self.filename + ".sigmf-meta")
+                    self.meta.tofile(self.cur_filename + ".sigmf-meta")
                     self.conn.close()
                     os._exit(0)
                 else:
@@ -130,22 +131,25 @@ class file_writer(gr.sync_block):
                         SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
                         SigMFFile.DESCRIPTION_KEY: self.description,
                         SigMFFile.AUTHOR_KEY: self.author,
-                        SigMFFile.DATASET_KEY: f"{self.filename}.sigmf-data",
+                        SigMFFile.DATASET_KEY: f"{self.cur_filename}.sigmf-data",
                         SigMFFile.HW_KEY: self.hw,
                         SigMFFile.VERSION_KEY: self.version,
                         SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
                     }
                 )
-                self.meta.tofile(self.filename + ".sigmf-meta")
+                self.meta.tofile(self.cur_filename + ".sigmf-meta")
                 self.meta = SigMFFile()
             self.device_id = device_id
+            self.total_symbols = 0
+            self.nitems_written = 0
+            self.new_symol = True
 
         print(f"Received device id: {self.device_id}")
 
-        self.filename = f"{self.filename}_device_{self.device_id}"
+        self.cur_filename = f"{self.filename}_device_{self.device_id}"
         # If the file exists, append a timestamp to the filename
-        if os.path.exists(self.filename + ".sigmf-data"):
-            self.filename = f"{self.filename}_{int(time.time())}"
+        if os.path.exists(self.cur_filename + ".sigmf-data"):
+            self.cur_filename = f"{self.cur_filename}_{int(time.time())}"
 
     def add_annotation(self, index, metadata, count=(256 * 13 * 4)):
         print(f"Adding annotation at index {index}")
@@ -168,14 +172,14 @@ class file_writer(gr.sync_block):
                             SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
                             SigMFFile.DESCRIPTION_KEY: self.description,
                             SigMFFile.AUTHOR_KEY: self.author,
-                            SigMFFile.DATASET_KEY: f"{self.filename}.sigmf-data",
+                            SigMFFile.DATASET_KEY: f"{self.cur_filename}.sigmf-data",
                             SigMFFile.HW_KEY: self.hw,
                             SigMFFile.VERSION_KEY: self.version,
                             SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
                         }
                     )
 
-                    self.meta.tofile(self.filename + ".sigmf-meta")
+                    self.meta.tofile(self.cur_filename + ".sigmf-meta")
                     self.conn.close()
                     # Stop the execution
                     os._exit(0)
@@ -202,7 +206,7 @@ class file_writer(gr.sync_block):
                     },
                 )
             # Write to file
-            with open(self.filename + ".sigmf-data", "ab") as f:
+            with open(self.cur_filename + ".sigmf-data", "ab") as f:
                 np.array(input_items[0]).tofile(f)
             self.new_symol = False
 
