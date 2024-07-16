@@ -68,6 +68,8 @@ class file_writer(gr.sync_block):
         self.ip_address = ip_address
         self.port = port
 
+        print(self.port)
+
         self.meta = SigMFFile()
         self.nitems_written = 0
 

@@ -4,7 +4,7 @@ category: '[First_lora]'
 
 templates:
   imports: from gnuradio import first_lora
-  make: first_lora.file_writer(filename=${filename}, author=${author}, description=${description}, item_size=${item_type.size}, item_type=${item_type.complex}, sample_rate=${sample_rate}, frequency=${frequency}, hw=${hw}, version=${version}, is_loopback=${loopback})
+  make: first_lora.file_writer(filename=${filename}, author=${author}, description=${description}, item_size=${item_type.size}, item_type=${item_type.complex}, sample_rate=${sample_rate}, frequency=${frequency}, hw=${hw}, version=${version}, is_loopback=${loopback}, ip_address=${ip_address}, port=${port})
 
 #  Make one 'parameters' list entry for every parameter you want settable from the GUI.
 #     Keys include:
