@@ -62,6 +62,8 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
   d_fs = d_bw * 2;
   d_fft_size = 10 * d_sn;
   d_bin_size = 10 * d_sps;
+  std::cout << "FFT size: " << d_fft_size << std::endl;
+  std::cout << "Bin size: " << d_bin_size << std::endl;
   d_cfo = 0;
   d_max_val = 0;
   // FFT input vector
@@ -69,12 +71,6 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
   d_fft_result = (lv_32fc_t *)malloc(d_fft_size * sizeof(lv_32fc_t));
   if (d_fft_result == NULL) {
     std::cerr << "Error: Failed to allocate memory for fft_result\n";
-    return;
-  }
-
-  b2 = (float *)volk_malloc(d_bin_size * sizeof(float), volk_get_alignment());
-  if (b2 == NULL) {
-    std::cerr << "Error: Failed to allocate memory for b2\n";
     return;
   }
 
@@ -102,7 +98,6 @@ lora_detector_impl::~lora_detector_impl() {
   // Free memory
   buffer.clear();
   free(d_fft_result);
-  volk_free(b2);
 
   // Print the number of detected LoRa symbols
   std::cout << "Detected LoRa symbols: " << detected_count << std::endl;
@@ -310,8 +305,8 @@ std::pair<float, uint32_t> lora_detector_impl::dechirp(const gr_complex *in,
   // Get peak of FFT
   float *b1 =
       (float *)volk_malloc(d_fft_size * sizeof(float), volk_get_alignment());
-  // float *b2 =
-  //     (float *)volk_malloc(d_bin_size * sizeof(float), volk_get_alignment());
+  float *b2 =
+      (float *)volk_malloc(d_bin_size * sizeof(float), volk_get_alignment());
 
   if (b1 == NULL || b2 == NULL) {
     std::cerr << "Error: Failed to allocate memory for b1 or b2\n";
@@ -323,7 +318,7 @@ std::pair<float, uint32_t> lora_detector_impl::dechirp(const gr_complex *in,
   // Free memory
   // free(fft_r);
   volk_free(b1);
-  // volk_free(b2);
+  volk_free(b2);
 
   return std::make_pair(max, peak);
 }
@@ -389,11 +384,8 @@ int lora_detector_impl::instantaneous_frequency(const gr_complex *in, int n) {
   return sum / n;
 }
 
-float realmod(float x, float y, bool print = false) {
+float realmod(float x, float y) {
   float result = fmod(x, y);
-  if (print) {
-    std::cout << "Realmod: " << x << " % " << y << " = " << result << std::endl;
-  }
   return result >= 0 ? result : result + y;
 }
 
@@ -403,6 +395,7 @@ int lora_detector_impl::general_work(int noutput_items,
                                      gr_vector_void_star &output_items) {
   if (ninput_items[0] < (int)(DEMOD_HISTORY * d_sn))
     return 0; // Not enough input
+
   auto in0 = static_cast<const input_type *>(input_items[0]);
   auto in = &in0[d_sn * (DEMOD_HISTORY - 1)]; // Get the last lora symbol
   auto out = static_cast<output_type *>(output_items[0]);
@@ -420,8 +413,7 @@ int lora_detector_impl::general_work(int noutput_items,
     d_max_val = up_val;
     if (!buffer.empty()) {
       float num = (float)up_idx - (float)buffer[0];
-      float distance =
-          realmod(num, d_bin_size, (up_idx == 516 && buffer[0] == 789));
+      float distance = realmod(num, d_bin_size);
       if (distance > (float)d_bin_size / 2) {
         distance = d_bin_size - distance;
       }

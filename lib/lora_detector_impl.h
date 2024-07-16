@@ -45,15 +45,14 @@ private:
   std::vector<gr_complex> d_dechirped; // Dechirped samples
   std::vector<gr_complex> d_ref_downchirp; // Downchirp reference signal
   std::vector<gr_complex> d_ref_upchirp;   // Upchirp reference signal
-  uint16_t d_fft_size;                     // FFT size
-  uint16_t d_bin_size;                     // Bin size (d_fft_size / 2)
+  uint32_t d_fft_size;                     // FFT size
+  uint32_t d_bin_size;                     // Bin size (d_fft_size / 2)
   fftplan fft;                             // FFT plan
   std::vector<gr_complex> d_mult_hf_fft;   // FFT result
   int d_sfd_recovery = 0;                  // SFD recovery count
   bool detected = false;                   // Detected LoRa signal
   int d_state = 0;                         // State of the detector
   lv_32fc_t *d_fft_result;                 // FFT result
-  float *b2;                               // Buffer 2
   /**
    * @brief Generate chirp signal
    * chirp(t;f_0) = A(t)exp(j2π(f_0 + (B/2T)t)t) (where A(t) is the amplitude
