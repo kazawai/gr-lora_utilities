@@ -11,6 +11,7 @@
 
 import datetime as dt
 import time
+from typing import override
 from sigmf import SigMFFile
 from gnuradio import gr
 from gnuradio import blocks
@@ -215,3 +216,21 @@ class file_writer(gr.sync_block):
             self.nitems_written += len(input_items[0])
 
         return len(input_items[0])
+
+    def stop(self):
+        self.meta.set_global_info(
+            {
+                SigMFFile.DATATYPE_KEY: self.datatype,
+                SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
+                SigMFFile.DESCRIPTION_KEY: self.description,
+                SigMFFile.AUTHOR_KEY: self.author,
+                SigMFFile.DATASET_KEY: f"{self.cur_filename}.sigmf-data",
+                SigMFFile.HW_KEY: self.hw,
+                SigMFFile.VERSION_KEY: self.version,
+                SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
+            }
+        )
+
+        self.meta.tofile(self.cur_filename + ".sigmf-meta")
+        print("Metadata written to file")
+        return True
