@@ -90,6 +90,9 @@ lora_detector_impl::lora_detector_impl(float threshold, uint8_t sf, uint32_t bw,
   message_port_register_out(pmt::mp("detected"));
 
   set_history(DEMOD_HISTORY * d_sn);
+
+  // Set output buffer size to 8 + 5 * d_sn
+  set_output_multiple((8 + 5) * d_sn);
 }
 
 /*
@@ -333,13 +336,6 @@ int lora_detector_impl::detect_preamble(const gr_complex *in, gr_complex *out) {
     return num_consumed;
   } else {
     preamble_detected = true;
-    if (detected_count == 7) {
-      // Print the buffer
-      std::cout << "Buffer size: " << buffer.size() << std::endl;
-      for (ulong i = 0; i < buffer.size(); i++) {
-        std::cout << buffer[i] << std::endl;
-      }
-    }
   }
 
   if (preamble_detected) {
@@ -429,11 +425,6 @@ int lora_detector_impl::general_work(int noutput_items,
       if (distance > (float)d_bin_size / 2) {
         distance = d_bin_size - distance;
       }
-      if (up_idx == 516 && buffer[0] == 789) {
-        std::cout << "Distance: " << distance << std::endl;
-        std::cout << "Buffer will become: " << buffer[0] << ", " << up_idx
-                  << std::endl;
-      }
       if (distance <= MAX_DISTANCE) {
         buffer.insert(buffer.begin(), up_idx);
       } else {
@@ -470,7 +461,7 @@ int lora_detector_impl::general_work(int noutput_items,
       // std::cout << "State 3\n";
       num_consumed = detect_sfd(in, out, in0);
       break;
-    case 3: // Signal output
+    case 3: // Output signal
       // std::cout << "State 4\n";
       // num_consumed = noutput_items;
       detected = true;
@@ -518,11 +509,14 @@ int lora_detector_impl::general_work(int noutput_items,
     // Signal should be centered around the peak of the preamble
     // Copy the preamble to the output
     memcpy(out, in0, (8 + 5) * d_sn * sizeof(gr_complex));
+    std::cout << "Copied to output" << std::endl;
 
     // Send "detected" message
     message_port_pub(pmt::mp("detected"), pmt::from_bool(true));
 
+    std::cout << "Sended message if connected" << std::endl;
     consume_each(noutput_items);
+    std::cout << "Consumed noutput_items" << std::endl;
     return (8 + 5) * d_sn;
   } else {
     // If no peak is detected, we do not want to output anything
