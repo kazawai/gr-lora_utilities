@@ -11,10 +11,8 @@
 
 import datetime as dt
 import time
-from typing import override
 from sigmf import SigMFFile
 from gnuradio import gr
-from gnuradio import blocks
 import socket
 import os
 import pmt
@@ -40,11 +38,16 @@ class file_writer(gr.sync_block):
         is_loopback=False,
         ip_address="localhost",
         port=12345,
+        num_inputs=1,
         **kwargs,
     ):
 
+        # Init sync block with variale number of inputs
         gr.sync_block.__init__(
-            self, name="file_writer", in_sig=[np.complex64], out_sig=None
+            self,
+            name="file_writer",
+            in_sig=[np.complex64 for _ in range(num_inputs)],
+            out_sig=None,
         )
 
         # Register message input
@@ -65,13 +68,14 @@ class file_writer(gr.sync_block):
         self.is_loopback = is_loopback
         self.new_symol = True
         self.total_symbols = 0
+        self.n_inputs = num_inputs
 
         self.ip_address = ip_address
         self.port = port
 
         print(self.port)
 
-        self.meta = SigMFFile()
+        self.meta: list[SigMFFile] = [SigMFFile() for _ in range(self.n_inputs)]
         self.nitems_written = 0
 
         if item_size == 8:
@@ -101,7 +105,10 @@ class file_writer(gr.sync_block):
                 device_id = self.conn.recv(1024).decode("utf-8")
                 if device_id == "close":
                     print("Closing connection")
-                    self.meta.tofile(self.cur_filename + ".sigmf-meta")
+                    for i in range(self.n_inputs):
+                        self.meta[i].tofile(
+                            self.cur_filename + "_input" + str(i) + ".sigmf-meta"
+                        )
                     self.conn.close()
                     os._exit(0)
                 else:
@@ -110,17 +117,14 @@ class file_writer(gr.sync_block):
                 pass
 
         else:
-            self.meta = SigMFFile(
-                global_info={
-                    SigMFFile.DATATYPE_KEY: self.datatype,
-                    SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
-                    SigMFFile.DESCRIPTION_KEY: self.description,
-                    SigMFFile.AUTHOR_KEY: self.author,
-                    SigMFFile.DATASET_KEY: f"{filename}.sigmf-data",
-                    SigMFFile.HW_KEY: self.hw,
-                    SigMFFile.VERSION_KEY: self.version,
-                },
-            )
+            # If any input file already exists, append a timestamp to the filename
+            if any(
+                [
+                    os.path.exists(self.cur_filename + f"_input{i}.sigmf-data")
+                    for i in range(self.n_inputs)
+                ]
+            ):
+                self.cur_filename = f"{self.cur_filename}_{int(time.time())}"
             self.start()
 
     def update_device_and_create_files(self, device_id=0):
@@ -128,20 +132,23 @@ class file_writer(gr.sync_block):
             print(f"Device id changed from {self.device_id} to {device_id}")
             if self.device_id != 0:
                 # Add the total number of symbols to the metadata
-                self.meta.set_global_info(
-                    {
-                        SigMFFile.DATATYPE_KEY: self.datatype,
-                        SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
-                        SigMFFile.DESCRIPTION_KEY: self.description,
-                        SigMFFile.AUTHOR_KEY: self.author,
-                        SigMFFile.DATASET_KEY: f"{self.cur_filename}.sigmf-data",
-                        SigMFFile.HW_KEY: self.hw,
-                        SigMFFile.VERSION_KEY: self.version,
-                        SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
-                    }
-                )
-                self.meta.tofile(self.cur_filename + ".sigmf-meta")
-                self.meta = SigMFFile()
+                for i in range(self.n_inputs):
+                    self.meta[i].set_global_info(
+                        {
+                            SigMFFile.DATATYPE_KEY: self.datatype,
+                            SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
+                            SigMFFile.DESCRIPTION_KEY: self.description,
+                            SigMFFile.AUTHOR_KEY: self.author,
+                            SigMFFile.DATASET_KEY: f"{self.cur_filename}_input{i}.sigmf-data",
+                            SigMFFile.HW_KEY: self.hw,
+                            SigMFFile.VERSION_KEY: self.version,
+                            SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
+                        }
+                    )
+                    self.meta[i].tofile(
+                        self.cur_filename + "_input" + str(i) + ".sigmf-meta"
+                    )
+                    self.meta[i] = SigMFFile()
             self.device_id = device_id
             self.total_symbols = 0
             self.nitems_written = 0
@@ -156,7 +163,8 @@ class file_writer(gr.sync_block):
 
     def add_annotation(self, index, metadata, count=(256 * 13 * 4)):
         print(f"Adding annotation at index {index}")
-        self.meta.add_annotation(index, count, metadata)
+        for i in range(self.n_inputs):
+            self.meta[i].add_annotation(index, count, metadata)
 
     def handle_msg(self, msg):
         print(f"Received message: {pmt.to_python(msg)}")
@@ -164,25 +172,38 @@ class file_writer(gr.sync_block):
             self.new_symol = True
 
     def work(self, input_items, output_items):
+        n_inputs = len(input_items)
+        assert (
+            n_inputs == self.n_inputs
+        ), f"Expected {self.n_inputs} inputs, got {n_inputs}"
+        print(f"Number of inputs: {n_inputs}")
+        if len(self.meta) < n_inputs:
+            self.meta = self.meta + [
+                SigMFFile() for _ in range(n_inputs - len(self.meta))
+            ]
+
         if self.is_loopback:
             try:
                 device_id = self.conn.recv(1024).decode("utf-8")
                 if device_id == "close":
                     print("Closing connection")
-                    self.meta.set_global_info(
-                        {
-                            SigMFFile.DATATYPE_KEY: self.datatype,
-                            SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
-                            SigMFFile.DESCRIPTION_KEY: self.description,
-                            SigMFFile.AUTHOR_KEY: self.author,
-                            SigMFFile.DATASET_KEY: f"{self.cur_filename}.sigmf-data",
-                            SigMFFile.HW_KEY: self.hw,
-                            SigMFFile.VERSION_KEY: self.version,
-                            SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
-                        }
-                    )
+                    for i in range(n_inputs):
+                        self.meta[i].set_global_info(
+                            {
+                                SigMFFile.DATATYPE_KEY: self.datatype,
+                                SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
+                                SigMFFile.DESCRIPTION_KEY: self.description,
+                                SigMFFile.AUTHOR_KEY: self.author,
+                                SigMFFile.DATASET_KEY: f"{self.cur_filename}_input{i}.sigmf-data",
+                                SigMFFile.HW_KEY: self.hw,
+                                SigMFFile.VERSION_KEY: self.version,
+                                SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
+                            }
+                        )
 
-                    self.meta.tofile(self.cur_filename + ".sigmf-meta")
+                        self.meta[i].tofile(
+                            self.cur_filename + "_input" + str(i) + ".sigmf-meta"
+                        )
                     self.conn.close()
                     # Stop the execution
                     os._exit(0)
@@ -195,7 +216,6 @@ class file_writer(gr.sync_block):
         if len(input_items[0]) == 0:
             return 0
         else:  # Write to file
-            print(f"Writing {len(input_items[0])} items to file")
             if self.new_symol:
                 self.total_symbols += 1
                 self.add_annotation(
@@ -209,28 +229,36 @@ class file_writer(gr.sync_block):
                     },
                 )
             # Write to file
-            with open(self.cur_filename + ".sigmf-data", "ab") as f:
-                np.array(input_items[0]).tofile(f)
-            self.new_symol = False
+            for i in range(n_inputs):
+                with open(self.cur_filename + f"_input{i}.sigmf-data", "ab") as f:
+                    np.array(input_items[i]).tofile(f)
 
+            self.new_symol = False
             self.nitems_written += len(input_items[0])
 
         return len(input_items[0])
 
     def stop(self):
-        self.meta.set_global_info(
-            {
-                SigMFFile.DATATYPE_KEY: self.datatype,
-                SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
-                SigMFFile.DESCRIPTION_KEY: self.description,
-                SigMFFile.AUTHOR_KEY: self.author,
-                SigMFFile.DATASET_KEY: f"{self.cur_filename}.sigmf-data",
-                SigMFFile.HW_KEY: self.hw,
-                SigMFFile.VERSION_KEY: self.version,
-                SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
-            }
-        )
+        if self.nitems_written == 0:
+            print("No data written")
+            return True
 
-        self.meta.tofile(self.cur_filename + ".sigmf-meta")
-        print("Metadata written to file")
+        for i in range(self.n_inputs):
+            self.meta[i].set_global_info(
+                {
+                    SigMFFile.DATATYPE_KEY: self.datatype,
+                    SigMFFile.SAMPLE_RATE_KEY: self.sample_rate,
+                    SigMFFile.DESCRIPTION_KEY: self.description,
+                    SigMFFile.AUTHOR_KEY: self.author,
+                    SigMFFile.DATASET_KEY: f"{self.cur_filename}_input{i}.sigmf-data",
+                    SigMFFile.HW_KEY: self.hw,
+                    SigMFFile.VERSION_KEY: self.version,
+                    SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
+                }
+            )
+
+        for i in range(self.n_inputs):
+            self.meta[i].tofile(self.cur_filename + f"_input{i}.sigmf-meta")
+            print(f"Metadata written to file: {self.cur_filename}_input{i}.sigmf-meta")
+
         return True
