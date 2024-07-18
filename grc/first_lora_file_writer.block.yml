@@ -87,6 +87,7 @@ inputs:
   id: detected
   domain: message
   optional: 1
+  multiplicity: ${ num_inputs }
 
 #  'file_format' specifies the version of the GRC yml format used in the file
 #  and should usually not be changed.

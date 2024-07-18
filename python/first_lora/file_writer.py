@@ -19,7 +19,7 @@ import pmt
 import numpy as np
 
 
-class file_writer(gr.sync_block):
+class file_writer(gr.basic_block):
     """
     docstring for block file_writer
     """
@@ -43,17 +43,22 @@ class file_writer(gr.sync_block):
     ):
 
         # Init sync block with variale number of inputs
-        gr.sync_block.__init__(
+        gr.basic_block.__init__(
             self,
             name="file_writer",
-            in_sig=[np.complex64 for _ in range(num_inputs)],
+            in_sig=[(np.complex64, 1) for _ in range(num_inputs)],
             out_sig=None,
         )
 
         # Register message input
-        self.message_port_register_in(pmt.intern("detected"))
-        self.set_msg_handler(pmt.intern("detected"), self.handle_msg)
-        print("Message port registered")
+        for i in range(num_inputs):
+            self.message_port_register_in(pmt.intern(f"detected{i}"))
+
+            # Passing the port id to the handler
+            func = getattr(self, f"handle_msg_{i}")
+            self.set_msg_handler(pmt.intern(f"detected{i}"), func)
+
+        print("Message port(s) registered")
 
         self.filename = filename
         self.cur_filename = filename
@@ -66,8 +71,8 @@ class file_writer(gr.sync_block):
         self.hw = hw
         self.version = version
         self.is_loopback = is_loopback
-        self.new_symol = True
-        self.total_symbols = 0
+        self.new_symol = [True for _ in range(num_inputs)]
+        self.total_symbols = [0 for _ in range(num_inputs)]
         self.n_inputs = num_inputs
 
         self.ip_address = ip_address
@@ -76,7 +81,7 @@ class file_writer(gr.sync_block):
         print(self.port)
 
         self.meta: list[SigMFFile] = [SigMFFile() for _ in range(self.n_inputs)]
-        self.nitems_written = 0
+        self.nitems_written = [0 for _ in range(self.n_inputs)]
 
         if item_size == 8:
             self.datatype = "cf32_le"
@@ -125,7 +130,8 @@ class file_writer(gr.sync_block):
                 ]
             ):
                 self.cur_filename = f"{self.cur_filename}_{int(time.time())}"
-            self.start()
+            if self.start():
+                print(f"Started writing to {self.cur_filename}")
 
     def update_device_and_create_files(self, device_id=0):
         if self.device_id != device_id:
@@ -142,7 +148,7 @@ class file_writer(gr.sync_block):
                             SigMFFile.DATASET_KEY: f"{self.cur_filename}_input{i}.sigmf-data",
                             SigMFFile.HW_KEY: self.hw,
                             SigMFFile.VERSION_KEY: self.version,
-                            SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
+                            SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols[i]}",
                         }
                     )
                     self.meta[i].tofile(
@@ -150,9 +156,9 @@ class file_writer(gr.sync_block):
                     )
                     self.meta[i] = SigMFFile()
             self.device_id = device_id
-            self.total_symbols = 0
-            self.nitems_written = 0
-            self.new_symol = True
+            self.total_symbols = [0 for _ in range(self.n_inputs)]
+            self.nitems_written = [0 for _ in range(self.n_inputs)]
+            self.new_symol: list[bool] = [True for _ in range(self.n_inputs)]
 
         print(f"Received device id: {self.device_id}")
 
@@ -161,21 +167,29 @@ class file_writer(gr.sync_block):
         if os.path.exists(self.cur_filename + ".sigmf-data"):
             self.cur_filename = f"{self.cur_filename}_{int(time.time())}"
 
-    def add_annotation(self, index, metadata, count=(256 * 13 * 4)):
+    def add_annotation(self, index, metadata, port_id, count=(256 * 13 * 4)):
         print(f"Adding annotation at index {index}")
-        for i in range(self.n_inputs):
-            self.meta[i].add_annotation(index, count, metadata)
+        self.meta[port_id].add_annotation(index, count, metadata)
 
-    def handle_msg(self, msg):
-        print(f"Received message: {pmt.to_python(msg)}")
+    def handle_msg_0(self, msg):
+        self.handle_msg(msg, 0)
+
+    def handle_msg_1(self, msg):
+        self.handle_msg(msg, 1)
+
+    def handle_msg_2(self, msg):
+        self.handle_msg(msg, 2)
+
+    def handle_msg(self, msg, port_id):
+        print(f"Received message: {pmt.to_python(msg)} from port {port_id}")
         if pmt.to_python(msg) == True:
-            self.new_symol = True
+            self.new_symol[port_id] = True
 
-    def work(self, input_items, output_items):
+    def general_work(self, input_items, output_items):
         n_inputs = len(input_items)
         assert (
             n_inputs == self.n_inputs
-        ), f"Expected {self.n_inputs} inputs, got {n_inputs}"
+        ), f"Number of inputs: {n_inputs}. Excpected: {self.n_inputs}"
         print(f"Number of inputs: {n_inputs}")
         if len(self.meta) < n_inputs:
             self.meta = self.meta + [
@@ -197,7 +211,7 @@ class file_writer(gr.sync_block):
                                 SigMFFile.DATASET_KEY: f"{self.cur_filename}_input{i}.sigmf-data",
                                 SigMFFile.HW_KEY: self.hw,
                                 SigMFFile.VERSION_KEY: self.version,
-                                SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
+                                SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols[i]}",
                             }
                         )
 
@@ -213,33 +227,40 @@ class file_writer(gr.sync_block):
                 pass
 
         # Check if the input is empty
-        if len(input_items[0]) == 0:
+        if all([len(input_items[i]) == 0 for i in range(n_inputs)]):
             return 0
         else:  # Write to file
-            if self.new_symol:
-                self.total_symbols += 1
-                self.add_annotation(
-                    self.nitems_written,
-                    {
-                        SigMFFile.ANNOTATION_KEY: {
-                            SigMFFile.FREQUENCY_KEY: self.frequency,
-                            SigMFFile.DATETIME_KEY: dt.datetime.now().isoformat() + "Z",
-                            SigMFFile.COMMENT_KEY: f"LoRa Symbol {self.total_symbols}",
-                        }
-                    },
-                )
-            # Write to file
             for i in range(n_inputs):
+                if len(input_items[i]) == 0:
+                    print(f"Input {i} is empty")
+                    continue
+
+                if self.new_symol[i]:
+                    self.total_symbols[i] += 1
+                    self.add_annotation(
+                        self.nitems_written[i],
+                        {
+                            SigMFFile.ANNOTATION_KEY: {
+                                SigMFFile.FREQUENCY_KEY: self.frequency,
+                                SigMFFile.DATETIME_KEY: dt.datetime.now().isoformat()
+                                + "Z",
+                                SigMFFile.COMMENT_KEY: f"LoRa Symbol {self.total_symbols[i]}",
+                            }
+                        },
+                        i,
+                    )
+                # Write to file
                 with open(self.cur_filename + f"_input{i}.sigmf-data", "ab") as f:
                     np.array(input_items[i]).tofile(f)
 
-            self.new_symol = False
-            self.nitems_written += len(input_items[0])
+                self.new_symol[i] = False
+                self.nitems_written[i] += len(input_items[i])
+                self.consume(i, len(input_items[i]))
 
-        return len(input_items[0])
+        return 0
 
     def stop(self):
-        if self.nitems_written == 0:
+        if all(self.nitems_written[i] == 0 for i in range(self.n_inputs)):
             print("No data written")
             return True
 
@@ -253,11 +274,16 @@ class file_writer(gr.sync_block):
                     SigMFFile.DATASET_KEY: f"{self.cur_filename}_input{i}.sigmf-data",
                     SigMFFile.HW_KEY: self.hw,
                     SigMFFile.VERSION_KEY: self.version,
-                    SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols}",
+                    SigMFFile.COMMENT_KEY: f"Total number of symbols: {self.total_symbols[i]}",
                 }
             )
 
         for i in range(self.n_inputs):
+            if self.nitems_written[i] == 0:
+                print(
+                    f"No data written to file: {self.cur_filename}_input{i}.sigmf-data"
+                )
+                continue
             self.meta[i].tofile(self.cur_filename + f"_input{i}.sigmf-meta")
             print(f"Metadata written to file: {self.cur_filename}_input{i}.sigmf-meta")
 
