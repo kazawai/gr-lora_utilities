@@ -100,7 +100,7 @@ class file_writer(gr.basic_block):
             print("Connecting to socket")
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.host = socket.gethostname()
-            self.sock.bind((self.host, self.port))
+            self.sock.bind(("", self.port))
             self.sock.listen(5)
             self.conn, self.addr = self.sock.accept()
             self.conn.setblocking(False)
