@@ -117,6 +117,7 @@ class file_writer(gr.basic_block):
                     self.conn.close()
                     os._exit(0)
                 else:
+                    self.conn.sendall(b"ACK")
                     self.update_device_and_create_files(int(device_id))
             except BlockingIOError:
                 pass
