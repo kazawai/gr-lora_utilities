@@ -16,6 +16,7 @@ from gnuradio import gr
 import socket
 import os
 import pmt
+import threading
 import numpy as np
 
 
@@ -106,27 +107,9 @@ class file_writer(gr.basic_block):
             self.conn, self.addr = self.sock.accept()
             print("Connected to socket")
 
-            try:
-                device_id = None
-                while device_id is None:
-                    device_id = self.conn.recv(1024).decode("utf-8")
-                    if device_id == "":
-                        device_id = None
-                if device_id == "close":
-                    print("Closing connection")
-                    for i in range(self.n_inputs):
-                        self.meta[i].tofile(
-                            self.cur_filename + "_input" + str(i) + ".sigmf-meta"
-                        )
-                    self.conn.close()
-                    os._exit(0)
-                else:
-                    self.conn.sendall(b"ACK")
-                    self.conn.setblocking(False)
-                    self.update_device_and_create_files(int(device_id))
-            except BlockingIOError:
-                pass
-
+            # Start the thread to handle the device id
+            self.thread = threading.Thread(target=self._thread_handle_device_id)
+            self.thread.start()
         else:
             # If any input file already exists, append a timestamp to the filename
             if any(
@@ -192,23 +175,13 @@ class file_writer(gr.basic_block):
         if pmt.to_python(msg) == True:
             self.new_symol[port_id] = True
 
-    def general_work(self, input_items, output_items):
-        n_inputs = len(input_items)
-        assert (
-            n_inputs == self.n_inputs
-        ), f"Number of inputs: {n_inputs}. Excpected: {self.n_inputs}"
-        print(f"Number of inputs: {n_inputs}")
-        if len(self.meta) < n_inputs:
-            self.meta = self.meta + [
-                SigMFFile() for _ in range(n_inputs - len(self.meta))
-            ]
-
-        if self.is_loopback:
+    def _thread_handle_device_id(self):
+        while True:
             try:
                 device_id = self.conn.recv(1024).decode("utf-8")
                 if device_id == "close":
                     print("Closing connection")
-                    for i in range(n_inputs):
+                    for i in range(self.n_inputs):
                         self.meta[i].set_global_info(
                             {
                                 SigMFFile.DATATYPE_KEY: self.datatype,
@@ -222,17 +195,33 @@ class file_writer(gr.basic_block):
                             }
                         )
 
+                        if self.nitems_written[i] == 0:
+                            print(
+                                f"No data written to file: {self.cur_filename}_input{i}.sigmf-data"
+                            )
+                            continue
+
                         self.meta[i].tofile(
                             self.cur_filename + "_input" + str(i) + ".sigmf-meta"
                         )
                     self.conn.close()
-                    # Stop the execution
                     os._exit(0)
                 else:
                     self.conn.sendall(b"ACK")
                     self.update_device_and_create_files(int(device_id))
             except BlockingIOError:
                 pass
+
+    def general_work(self, input_items, output_items):
+        n_inputs = len(input_items)
+        assert (
+            n_inputs == self.n_inputs
+        ), f"Number of inputs: {n_inputs}. Excpected: {self.n_inputs}"
+        print(f"Number of inputs: {n_inputs}")
+        if len(self.meta) < n_inputs:
+            self.meta = self.meta + [
+                SigMFFile() for _ in range(n_inputs - len(self.meta))
+            ]
 
         # Check if the input is empty
         if all([len(input_items[i]) == 0 for i in range(n_inputs)]):
