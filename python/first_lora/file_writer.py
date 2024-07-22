@@ -99,8 +99,9 @@ class file_writer(gr.basic_block):
         if self.is_loopback:
             print("Connecting to socket")
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.host = socket.gethostname()
-            self.sock.bind(("", self.port))
+            self.sock.bind((self.ip_address, self.port))
             self.sock.listen(5)
             self.conn, self.addr = self.sock.accept()
             self.conn.setblocking(False)
@@ -162,6 +163,7 @@ class file_writer(gr.basic_block):
             self.new_symol: list[bool] = [True for _ in range(self.n_inputs)]
 
         print(f"Received device id: {self.device_id}")
+        self.conn.sendall(b"ACK")
 
         self.cur_filename = f"{self.filename}_device_{self.device_id}"
         # If the file exists, append a timestamp to the filename
