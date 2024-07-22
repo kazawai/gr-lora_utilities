@@ -104,11 +104,14 @@ class file_writer(gr.basic_block):
             self.sock.bind((self.ip_address, self.port))
             self.sock.listen(5)
             self.conn, self.addr = self.sock.accept()
-            self.conn.setblocking(False)
             print("Connected to socket")
 
             try:
-                device_id = self.conn.recv(1024).decode("utf-8")
+                device_id = None
+                while device_id is None:
+                    device_id = self.conn.recv(1024).decode("utf-8")
+                    if device_id == "":
+                        device_id = None
                 if device_id == "close":
                     print("Closing connection")
                     for i in range(self.n_inputs):
@@ -119,6 +122,7 @@ class file_writer(gr.basic_block):
                     os._exit(0)
                 else:
                     self.conn.sendall(b"ACK")
+                    self.conn.setblocking(False)
                     self.update_device_and_create_files(int(device_id))
             except BlockingIOError:
                 pass
