@@ -52,12 +52,16 @@ class file_writer(gr.basic_block):
         )
 
         # Register message input
-        for i in range(num_inputs):
-            self.message_port_register_in(pmt.intern(f"detected{i}"))
+        if num_inputs == 1:
+            self.message_port_register_in(pmt.intern("detected"))
+            self.set_msg_handler(pmt.intern("detected"), self.handle_msg_0)
+        else:
+            for i in range(num_inputs):
+                self.message_port_register_in(pmt.intern(f"detected{i}"))
 
-            # Passing the port id to the handler
-            func = getattr(self, f"handle_msg_{i}")
-            self.set_msg_handler(pmt.intern(f"detected{i}"), func)
+                # Passing the port id to the handler
+                func = getattr(self, f"handle_msg_{i}")
+                self.set_msg_handler(pmt.intern(f"detected{i}"), func)
 
         print("Message port(s) registered")
 
